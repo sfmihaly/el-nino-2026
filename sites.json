@@ -1,0 +1,223 @@
+{
+ "baseline_note": "Day-of-year mean and sd of Godin-filtered (tide-removed) daily values, \u00b17-day window, all years before 2026; frozen 6 Nov 2026.",
+ "records_note": "Pre-2026 extremes of Godin-filtered daily values (noon of each day): temperature max, salinity min, oxygen max and min.",
+ "sites": [
+  {
+   "code": "FGPPN",
+   "name": "Folger Pinnacle",
+   "depth_m": 25,
+   "history_start": "2012-10-19",
+   "history_end": "2026-11-06 17:30",
+   "despike_floor_salinity": 0.5,
+   "despike_floor_O2": 1.0,
+   "pre2026_records_godin": {
+    "temperature": {
+     "stat": "max",
+     "value": 15.171,
+     "date": "2014-10-26"
+    },
+    "salinity": {
+     "stat": "min",
+     "value": 27.896,
+     "date": "2017-03-27"
+    },
+    "O2": {
+     "stat": "max",
+     "value": 6.631,
+     "date": "2020-04-27"
+    },
+    "O2_min": {
+     "stat": "min",
+     "value": 1.733,
+     "date": "2016-09-13"
+    }
+   }
+  },
+  {
+   "code": "NCBC",
+   "name": "Upper Slope",
+   "depth_m": 396,
+   "history_start": "2009-08-01",
+   "history_end": "2026-11-06 15:30",
+   "despike_floor_salinity": 0.04,
+   "despike_floor_O2": 0.03,
+   "pre2026_records_godin": {
+    "temperature": {
+     "stat": "max",
+     "value": 6.66,
+     "date": "2016-01-19"
+    },
+    "salinity": {
+     "stat": "min",
+     "value": 33.963,
+     "date": "2015-12-05"
+    },
+    "O2": {
+     "stat": "max",
+     "value": 1.957,
+     "date": "2015-12-11"
+    },
+    "O2_min": {
+     "stat": "min",
+     "value": 0.724,
+     "date": "2025-05-01"
+    }
+   }
+  },
+  {
+   "code": "BACND",
+   "name": "Barkley Node",
+   "depth_m": 643,
+   "history_start": "2018-06-22",
+   "history_end": "2026-11-06 17:30",
+   "despike_floor_salinity": 0.08,
+   "despike_floor_O2": 0.15,
+   "pre2026_records_godin": {
+    "temperature": {
+     "stat": "max",
+     "value": 5.016,
+     "date": "2025-08-01"
+    },
+    "salinity": {
+     "stat": "min",
+     "value": 34.115,
+     "date": "2019-01-19"
+    },
+    "O2": {
+     "stat": "max",
+     "value": 0.592,
+     "date": "2019-01-19"
+    },
+    "O2_min": {
+     "stat": "min",
+     "value": 0.19,
+     "date": "2022-10-18"
+    }
+   }
+  },
+  {
+   "code": "BACHY",
+   "name": "Hydrates",
+   "depth_m": 871,
+   "history_start": "2013-05-16",
+   "history_end": "2026-11-06 17:30",
+   "despike_floor_salinity": 0.04,
+   "despike_floor_O2": 0.03,
+   "pre2026_records_godin": {
+    "temperature": {
+     "stat": "max",
+     "value": 4.227,
+     "date": "2023-08-17"
+    },
+    "salinity": {
+     "stat": "min",
+     "value": 34.254,
+     "date": "2019-12-11"
+    },
+    "O2": {
+     "stat": "max",
+     "value": 0.327,
+     "date": "2015-12-05"
+    },
+    "O2_min": {
+     "stat": "min",
+     "value": 0.239,
+     "date": "2013-09-28"
+    }
+   }
+  },
+  {
+   "code": "BACME",
+   "name": "Mid-East",
+   "depth_m": 895,
+   "history_start": "2009-11-26",
+   "history_end": "2026-11-06 17:30",
+   "despike_floor_salinity": 0.04,
+   "despike_floor_O2": 0.03,
+   "pre2026_records_godin": {
+    "temperature": {
+     "stat": "max",
+     "value": 4.126,
+     "date": "2023-08-17"
+    },
+    "salinity": {
+     "stat": "min",
+     "value": 34.265,
+     "date": "2021-06-14"
+    },
+    "O2": {
+     "stat": "max",
+     "value": 0.324,
+     "date": "2017-05-03"
+    },
+    "O2_min": {
+     "stat": "min",
+     "value": 0.224,
+     "date": "2023-03-23"
+    }
+   }
+  },
+  {
+   "code": "BACAX",
+   "name": "Canyon Axis",
+   "depth_m": 983,
+   "history_start": "2013-09-11",
+   "history_end": "2026-11-06 17:30",
+   "despike_floor_salinity": 0.04,
+   "despike_floor_O2": 0.03,
+   "pre2026_records_godin": {
+    "temperature": {
+     "stat": "max",
+     "value": 3.902,
+     "date": "2025-07-22"
+    },
+    "salinity": {
+     "stat": "min",
+     "value": 34.281,
+     "date": "2023-08-23"
+    },
+    "O2": {
+     "stat": "max",
+     "value": 0.345,
+     "date": "2024-03-31"
+    },
+    "O2_min": {
+     "stat": "min",
+     "value": 0.238,
+     "date": "2014-10-10"
+    }
+   }
+  },
+  {
+   "code": "NC89",
+   "name": "Clayoquot Bullseye",
+   "depth_m": 1257,
+   "history_start": "2011-07-12",
+   "history_end": "2026-11-06 16:30",
+   "despike_floor_salinity": 0.04,
+   "despike_floor_O2": 0.03,
+   "pre2026_records_godin": {
+    "temperature": {
+     "stat": "max",
+     "value": 3.082,
+     "date": "2023-06-22"
+    },
+    "salinity": {
+     "stat": "min",
+     "value": 34.425,
+     "date": "2023-02-10"
+    },
+    "O2": {
+     "stat": "max",
+     "value": 0.562,
+     "date": "2023-01-29"
+    },
+    "O2_min": {
+     "stat": "min",
+     "value": 0.363,
+     "date": "2013-09-30"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,423 @@
+#!/usr/bin/env python3
+"""Near-real-time monitor of temperature, salinity and oxygen at ONC moorings
+on the Vancouver Island shelf, continental slope and in Barkley Canyon.
+
+Data
+  history/<SITE>_hourly_qc.parquet  frozen, quality-controlled hourly record to 6 Nov 2026
+  cache/<SITE>_10min.parquet        live 10-minute data from ONC since then (rebuilt if missing)
+
+Tides
+  Temperature at these sites swings by up to ~0.5 °C over a tidal cycle, and a
+  24-h block mean does not remove the tide cleanly (aliasing). All "daily" values
+  here are therefore Godin-filtered (24-h, 24-h, 25-h running means in sequence)
+  and taken at noon each day. The filtered series ends ~35 h before the latest
+  data; the most recent hours are shown unfiltered.
+
+Outputs (output/)
+  index.html                    overview page: status table, interactive temperature
+                                plot (zoom to 10-min detail) and the per-site figures
+  overview_year.png             temperature, this year, all sites (report Figure 3 layout)
+  overview_recent.png           last N days at 10-minute resolution
+  site_<SITE>.png               temperature, salinity, oxygen: full record + last 180 days
+  status.csv                    latest values and anomalies
+
+Token: environment variable ONC_API_TOKEN or the file ~/.onc_token.
+Usage: python monitor.py [--recent-days 10] [--hires-days 60]
+"""
+import argparse, json, os, sys, time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import requests
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+
+ONC_API = "https://data.oceannetworks.ca/api"
+HERE = Path(__file__).resolve().parent
+RESAMPLE_S = 600
+GOOD = {7}                         # ONC flag: valid resampled average
+EV, BAND, CLIM, GREY = "#c0392b", "#cfd8e3", "#5b7a99", "0.6"
+VARS = [("temperature", "T", "Temperature (°C)", "max"),
+        ("salinity", "S", "Salinity (PSS-78)", "min"),
+        ("O2", "O2", "Oxygen (ml/l)", "max")]
+plt.rcParams.update({"font.size": 8, "axes.spines.top": False, "axes.spines.right": False,
+                     "xtick.direction": "out", "ytick.direction": "out"})
+
+
+# ---------------------------------------------------------------- data access
+def token():
+    t = os.environ.get("ONC_API_TOKEN")
+    if not t:
+        f = Path.home() / ".onc_token"
+        t = f.read_text().strip() if f.exists() else None
+    if not t:
+        sys.exit("No ONC token: set ONC_API_TOKEN or create ~/.onc_token")
+    return t
+
+
+def onc_get(path, tok, **params):
+    params["token"] = tok
+    err = ""
+    for attempt in range(3):
+        try:
+            r = requests.get(f"{ONC_API}/{path}", params=params, timeout=300)
+            if r.status_code == 404:
+                return None
+            if r.status_code == 400:          # e.g. no device deployed in the window
+                return None
+            if r.status_code == 200:
+                return r.json()
+            err = f"HTTP {r.status_code}: {r.text[:200]}"
+        except requests.RequestException as e:
+            err = str(e)
+        time.sleep(20 * (attempt + 1))
+    raise RuntimeError(f"ONC {path} failed: {err}")
+
+
+def fetch(code, cat, sensors, t0, t1, tok):
+    """10-minute averages of the given sensors, ONC good flags only, columns renamed."""
+    names = {"temperature": "T", "salinity": "S", "oxygen_corrected": "O2"}
+    parts = []
+    a = t0
+    while a < t1:
+        b = min(a + timedelta(days=30), t1)
+        r = onc_get("scalardata/location", tok, locationCode=code, deviceCategoryCode=cat,
+                    dateFrom=a.strftime("%Y-%m-%dT%H:%M:%S.000Z"), dateTo=b.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    resamplePeriod=RESAMPLE_S, resampleType="avg", rowLimit=100000,
+                    sensorCategoryCodes=",".join(sensors))
+        for s in (r or {}).get("sensorData") or []:
+            if s["sensorCategoryCode"] in sensors:
+                d = s["data"]
+                x = pd.Series(d["values"], index=pd.to_datetime(d["sampleTimes"], utc=True), dtype=float)
+                x[~pd.Series(d["qaqcFlags"], index=x.index).isin(GOOD)] = np.nan
+                parts.append(x.rename(names[s["sensorCategoryCode"]]))
+        a = b
+    if not parts:
+        return pd.DataFrame(columns=list({names[s] for s in sensors}))
+    df = pd.concat(parts, axis=1)
+    df = df.T.groupby(level=0).first().T if df.columns.duplicated().any() else df
+    return df[~df.index.duplicated()].sort_index()
+
+
+def despike(s, floor, k=8):
+    """Remove isolated spikes: |x - 5-h median| > k*MAD and > floor."""
+    x = s.dropna()
+    if len(x) < 50:
+        return s
+    med = x.rolling("5h", center=True, min_periods=3).median()
+    res = x - med
+    mad = 1.4826 * res.abs().rolling("30D", center=True, min_periods=48).median()
+    bad = x.index[(res.abs() > k * mad) & (res.abs() > floor)]
+    s = s.copy(); s.loc[bad] = np.nan
+    return s
+
+
+def update_cache(site, tok, hist_end, hires_days, cache_dir):
+    f = cache_dir / f"{site['code']}_10min.parquet"
+    now = datetime.now(timezone.utc)
+    old = pd.read_parquet(f) if f.exists() else None
+    if old is not None and len(old):
+        start = old.index.max().to_pydatetime() - timedelta(days=1)
+    else:   # rebuild: everything after the frozen history, and the high-resolution window
+        start = min(hist_end.to_pydatetime(), now - timedelta(days=hires_days)) - timedelta(days=2)
+    ctd = fetch(site["code"], "CTD", ["temperature", "salinity"], start, now, tok)
+    oxy = fetch(site["code"], "OXYSENSOR", ["oxygen_corrected"], start, now, tok)
+    new = pd.concat([ctd, oxy], axis=1) if len(oxy) else ctd
+    for c in ["T", "S", "O2"]:
+        if c not in new:
+            new[c] = np.nan
+    new = new[["T", "S", "O2"]]
+    if len(new):
+        new["S"] = despike(new["S"], site["despike_floor_salinity"])
+        new["O2"] = despike(new["O2"], site["despike_floor_O2"])
+    df = new if old is None else pd.concat([old[old.index < start], new])
+    df = df[~df.index.duplicated(keep="last")].sort_index()
+    df.to_parquet(f)
+    return df
+
+
+# ---------------------------------------------------------------- tidal filter
+def godin(hourly, max_gap_h=2):
+    """Godin filter (A24 A24 A25) of an hourly series; gaps <= max_gap_h are interpolated."""
+    s = hourly.copy()
+    s.index = s.index.floor("h")
+    s = s[~s.index.duplicated()].asfreq("1h")
+    si = s.interpolate(limit=max_gap_h, limit_area="inside")
+    return (si.rolling(24, center=True, min_periods=24).mean()
+              .rolling(24, center=True, min_periods=24).mean()
+              .rolling(25, center=True, min_periods=25).mean())
+
+
+def noon(g):
+    d = g[g.index.hour == 12]
+    d.index = d.index.normalize()
+    return d.dropna()
+
+
+def baseline(base, code, var, index):
+    b = base[(base.code == code) & (base["var"] == var)].set_index("doy")
+    doy = index.dayofyear
+    return b["mean"].reindex(doy).to_numpy(), b["sd"].reindex(doy).to_numpy()
+
+
+# ---------------------------------------------------------------- figures
+def site_figure(s, H, G, base, year, out):
+    """Per-site figure: rows T, S, O2; left full record (tide-removed daily), right last 180 days."""
+    fig, axs = plt.subplots(3, 2, figsize=(11, 7.8), sharex="col", sharey="row",
+                            gridspec_kw={"width_ratios": [2.4, 1], "wspace": 0.12, "hspace": 0.32})
+    end = H.index.max()
+    r0 = end - pd.Timedelta(days=180)
+    y0 = pd.Timestamp(f"{year}-01-01", tz="UTC")
+    recs = s["pre2026_records_godin"]
+    for i, (v, short, lab, stat) in enumerate(VARS):
+        a, b = axs[i]
+        name = lab.split(" (")[0]
+        gd = noon(G[v]) if v in G else pd.Series(dtype=float)
+        gdp = gd.asfreq("1D") if len(gd) else gd                      # NaN on missing days -> gaps in lines
+        if len(gdp):
+            a.plot(gdp[gdp.index < y0].index, gdp[gdp.index < y0], color=GREY, lw=0.5)
+            cur = gdp[gdp.index >= y0 - pd.Timedelta("1D")]
+            a.plot(cur.index, cur, color=EV, lw=1.0)
+        hh = H[v].loc[r0:].dropna()
+        hhp = hh.asfreq("1h") if len(hh) else hh
+        days = pd.date_range(r0.normalize(), end.normalize() + pd.Timedelta("1D"), freq="1D")
+        mu, sd = baseline(base, s["code"], v, days)
+        b.fill_between(days, mu - sd, mu + sd, color=BAND, lw=0); b.plot(days, mu, color=CLIM, lw=0.9)
+        b.plot(hhp.index, hhp, color=GREY, lw=0.3, alpha=0.8)
+        if v in G:
+            g = G[v].loc[r0:]; b.plot(g.index, g, color=EV, lw=1.3)
+        # records: T max, S min, O2 max and min
+        rlist = [(recs[v], stat)] if v in recs else []
+        if v == "O2" and "O2_min" in recs:
+            rlist.append((recs["O2_min"], "min"))
+        this = gd[gd.index >= y0]
+        parts = []
+        for rec, st_ in rlist:
+            for ax in (a, b):
+                ax.axhline(rec["value"], color="k", ls="--", lw=0.8)
+            a.text(0.01, 0.97 if st_ == "max" else 0.03, f"pre-2026 tide-removed {st_} {rec['value']:.3f} ({rec['date']})",
+                   transform=a.transAxes, fontsize=7, va="top" if st_ == "max" else "bottom")
+            if len(this):
+                x = this.max() if st_ == "max" else this.min()
+                d = this.idxmax() if st_ == "max" else this.idxmin()
+                new = (x > rec["value"]) if st_ == "max" else (x < rec["value"])
+                parts.append(f"{year} {st_} {x:.3f} ({d:%d %b}) vs {rec['value']:.3f}" + (" — new record" if new else ""))
+        if not len(this):
+            title = f"{name}: no valid data in {year}" + (" (sensor flagged bad by ONC)" if v == "salinity" else "")
+        else:
+            title = f"{name}: " + "; ".join(parts)
+        a.set_title(title, loc="left", fontsize=9)
+        a.set_ylabel(lab)
+        vals = pd.concat([gd, hh]).dropna()
+        if len(vals):
+            lo, hi = np.nanpercentile(vals, [0.2, 99.8])
+            for rec, _ in rlist:
+                lo, hi = min(lo, rec["value"]), max(hi, rec["value"])
+            pad = 0.1 * (hi - lo) if hi > lo else 0.1
+            a.set_ylim(lo - pad, hi + pad)
+    axs[0, 1].set_title("Last 180 days: hourly (grey), tide-removed (red)", loc="left", fontsize=9)
+    axs[2, 0].xaxis.set_major_locator(mdates.YearLocator(2)); axs[2, 0].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    axs[2, 1].xaxis.set_major_locator(mdates.MonthLocator(bymonth=[1, 3, 5, 7, 9, 11]))
+    axs[2, 1].xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+    axs[2, 1].set_xlim(r0, end + pd.Timedelta("2D"))
+    fig.legend([Line2D([], [], color=GREY, lw=1), Line2D([], [], color=EV, lw=1.3), Line2D([], [], color="k", ls="--", lw=0.8),
+                Patch(color=BAND), Line2D([], [], color=CLIM, lw=0.9)],
+               [f"tide-removed daily, before {year} (right: hourly)", f"tide-removed, {year}", "pre-2026 record (tide-removed)",
+                "day-of-year mean ± 1 sd (pre-2026)", "day-of-year mean"],
+               loc="lower left", bbox_to_anchor=(0.06, 0.015), fontsize=7, ncol=5, frameon=False)
+    fig.suptitle(f"ONC {s['name']} ({s['code']}, {s['depth_m']} m) — data to {end:%Y-%m-%d %H:%M} UTC", x=0.06, ha="left", fontsize=10)
+    fig.text(0.06, -0.005, "Tide-removed = Godin filter (24-24-25 h), noon value each day. Salinity and oxygen are not corrected "
+             "for offsets between instruments; artefact masking was applied by hand only to data before 6 Nov 2026.",
+             fontsize=6.5, color="0.35")
+    fig.savefig(out, dpi=150, bbox_inches="tight"); plt.close(fig)
+
+
+def overview_pngs(cfg, base, H, G, T10, year, recent_days, run_time, out_dir):
+    sites = cfg["sites"]
+    y0 = pd.Timestamp(f"{year}-01-01", tz="UTC"); y1 = pd.Timestamp(f"{year}-12-31", tz="UTC")
+    days = pd.date_range(y0, y1, freq="1D")
+    fig, axs = plt.subplots(len(sites), 1, figsize=(7.2, 9.4), sharex=True, gridspec_kw={"hspace": 0.18})
+    for ax, s in zip(axs, sites):
+        c = s["code"]; mu, sd = baseline(base, c, "temperature", days)
+        ax.fill_between(days, mu - sd, mu + sd, color=BAND, lw=0); ax.plot(days, mu, color=CLIM, lw=0.9)
+        h = H[c]["temperature"].loc[y0:].dropna().asfreq("1h"); ax.plot(h.index, h, color=GREY, lw=0.25, alpha=0.6)
+        g = G[c]["temperature"].loc[y0:]; ax.plot(g.index, g, color=EV, lw=1.2)
+        ax.axhline(s["pre2026_records_godin"]["temperature"]["value"], color="k", ls="--", lw=0.7)
+        ax.text(1.005, 0.5, f"{s['name']}\n{s['depth_m']} m", transform=ax.transAxes, fontsize=7, va="center")
+    axs[0].set_xlim(y0, y1)
+    axs[-1].xaxis.set_major_locator(mdates.MonthLocator()); axs[-1].xaxis.set_major_formatter(mdates.DateFormatter("%b"))
+    fig.text(0.04, 0.5, "Temperature (°C)", rotation=90, va="center", fontsize=9)
+    axs[0].legend([Line2D([], [], color=EV, lw=1.2), Line2D([], [], color=GREY, lw=0.6), Line2D([], [], color=CLIM, lw=0.9),
+                   Patch(color=BAND), Line2D([], [], color="k", ls="--", lw=0.7)],
+                  [f"{year}, tide-removed (Godin)", "hourly", "day-of-year mean (pre-2026)", "± 1 sd", "pre-2026 tide-removed maximum"],
+                  ncol=3, fontsize=6.5, loc="lower left", bbox_to_anchor=(0, 1.02), frameon=False)
+    fig.suptitle(f"Temperature at ONC slope, canyon and shelf sites — updated {run_time:%Y-%m-%d %H:%M} UTC", y=0.995, fontsize=9)
+    fig.savefig(out_dir / "overview_year.png", dpi=170, bbox_inches="tight"); plt.close(fig)
+
+    end = max((T10[s["code"]].index.max() if len(T10[s["code"]]) else H[s["code"]].index.max()) for s in sites)
+    r0 = end - pd.Timedelta(days=recent_days)
+    hrs = pd.date_range(r0.floor("h"), end.ceil("h"), freq="1h")
+    fig, axs = plt.subplots(len(sites), 1, figsize=(7.2, 9.4), sharex=True, gridspec_kw={"hspace": 0.18})
+    for ax, s in zip(axs, sites):
+        c = s["code"]; mu, sd = baseline(base, c, "temperature", hrs)
+        ax.fill_between(hrs, mu - sd, mu + sd, color=BAND, lw=0); ax.plot(hrs, mu, color=CLIM, lw=0.9)
+        x = T10[c].loc[r0:] if len(T10[c]) else H[c]["temperature"].loc[r0:].dropna()
+        ax.plot(x.index, x, color=EV, lw=0.6)
+        g = G[c]["temperature"].loc[r0:]; ax.plot(g.index, g, color="k", lw=1.1)
+        vals = np.r_[mu - sd, mu + sd, x.dropna().to_numpy()]
+        lo, hi = np.nanmin(vals), np.nanmax(vals); rec = s["pre2026_records_godin"]["temperature"]["value"]
+        if rec <= hi + 0.5 * (hi - lo):
+            ax.axhline(rec, color="k", ls="--", lw=0.7); hi = max(hi, rec)
+        else:
+            ax.text(0.01, 0.95, f"pre-2026 tide-removed max {rec:.2f} °C (off scale)", transform=ax.transAxes, fontsize=6.5, va="top")
+        pad = 0.06 * (hi - lo); ax.set_ylim(lo - pad, hi + pad)
+        ax.text(1.005, 0.5, f"{s['name']}\n{s['depth_m']} m", transform=ax.transAxes, fontsize=7, va="center")
+    axs[0].set_xlim(r0, end)
+    axs[-1].xaxis.set_major_locator(mdates.DayLocator()); axs[-1].xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
+    plt.setp(axs[-1].get_xticklabels(), rotation=30, ha="right")
+    fig.text(0.04, 0.5, "Temperature (°C)", rotation=90, va="center", fontsize=9)
+    axs[0].legend([Line2D([], [], color=EV, lw=0.8), Line2D([], [], color="k", lw=1.1), Line2D([], [], color=CLIM, lw=0.9),
+                   Patch(color=BAND), Line2D([], [], color="k", ls="--", lw=0.7)],
+                  ["10-min mean", "tide-removed (Godin; ends ~35 h before latest data)", "day-of-year mean (pre-2026)", "± 1 sd",
+                   "pre-2026 tide-removed maximum"], ncol=2, fontsize=6.5, loc="lower left", bbox_to_anchor=(0, 1.02), frameon=False)
+    fig.suptitle(f"Last {recent_days} days at 10-minute resolution — updated {run_time:%Y-%m-%d %H:%M} UTC", y=0.995, fontsize=9)
+    fig.savefig(out_dir / "overview_recent.png", dpi=170, bbox_inches="tight"); plt.close(fig)
+
+
+def write_html(cfg, base, H, G, T10, st, year, hires_days, run_time, out_dir, problems):
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    sites = cfg["sites"]; n = len(sites)
+    y0 = pd.Timestamp(f"{year}-01-01", tz="UTC")
+    days = pd.date_range(y0, pd.Timestamp(f"{year}-12-31", tz="UTC"), freq="1D")
+    fig = make_subplots(rows=n, cols=1, shared_xaxes=True, vertical_spacing=0.012,
+                        subplot_titles=[f"{s['name']} ({s['depth_m']} m)" for s in sites])
+    for i, s in enumerate(sites, start=1):
+        c = s["code"]; show = i == 1
+        mu, sd = baseline(base, c, "temperature", days)
+        fig.add_trace(go.Scatter(x=days, y=mu + sd, line=dict(width=0), hoverinfo="skip", showlegend=False), i, 1)
+        fig.add_trace(go.Scatter(x=days, y=mu - sd, fill="tonexty", fillcolor=BAND, line=dict(width=0), hoverinfo="skip",
+                                 name="± 1 sd (pre-2026)", legendgroup="band", showlegend=show), i, 1)
+        fig.add_trace(go.Scatter(x=days, y=mu, line=dict(color=CLIM, width=1), name="day-of-year mean (pre-2026)",
+                                 legendgroup="clim", showlegend=show, hovertemplate="normal %{y:.3f} °C<extra></extra>"), i, 1)
+        h = H[c]
+        end = T10[c].index.max() if len(T10[c]) else h.index.max(); cut = end - pd.Timedelta(days=hires_days)
+        hi_res = T10[c].loc[cut:] if len(T10[c]) else h["temperature"].loc[cut:]
+        x = pd.concat([h["temperature"].loc[y0:cut], hi_res]).dropna()
+        fig.add_trace(go.Scattergl(x=x.index, y=x.round(4), line=dict(color="rgba(120,120,120,0.6)", width=0.8),
+                                   name=f"10-min (last {hires_days} d), hourly before", legendgroup="hi", showlegend=show,
+                                   hovertemplate="%{x|%d %b %H:%M} UTC  %{y:.3f} °C<extra></extra>"), i, 1)
+        g = G[c]["temperature"].loc[y0:].dropna()
+        g = g[g.index.hour % 3 == 0]
+        fig.add_trace(go.Scatter(x=g.index, y=g.round(4), line=dict(color=EV, width=2), name="tide-removed (Godin)",
+                                 legendgroup="g", showlegend=show, hovertemplate="%{x|%d %b %H:%M}  filtered %{y:.3f} °C<extra></extra>"), i, 1)
+        fig.add_hline(y=s["pre2026_records_godin"]["temperature"]["value"], line=dict(color="black", dash="dash", width=1), row=i, col=1)
+        fig.update_yaxes(title_text="°C", row=i, col=1)
+    last_end = max((T10[s["code"]].index.max() if len(T10[s["code"]]) else H[s["code"]].index.max()) for s in sites)
+    fig.update_xaxes(range=[last_end - pd.Timedelta(days=30), last_end + pd.Timedelta(hours=6)])
+    fig.update_xaxes(rangeselector=dict(buttons=[dict(count=3, label="3 d", step="day", stepmode="backward"),
+                                                 dict(count=10, label="10 d", step="day", stepmode="backward"),
+                                                 dict(count=1, label="1 mo", step="month", stepmode="backward"),
+                                                 dict(count=3, label="3 mo", step="month", stepmode="backward"),
+                                                 dict(step="all", label="year")]), row=1, col=1)
+    fig.update_layout(height=230 * n, template="simple_white", hovermode="x unified",
+                      legend=dict(orientation="h", y=1.03, x=0, font=dict(size=11)), margin=dict(l=60, r=20, t=110, b=40),
+                      title=dict(text=f"Temperature, {year} — dashed line: pre-2026 tide-removed maximum", x=0, font=dict(size=14)))
+    cols = ["site", "depth_m", "last_data_utc", "last_25h_mean_C", "filtered_valid_to_utc", "filtered_C", "normal_C",
+            "anomaly_C", "anomaly_sd", "max_filtered_this_year_C", "pre2026_record_C", "new_record_this_year"]
+    tbl = st.reindex(columns=cols).to_html(index=False, border=0, classes="status", na_rep="")
+    warn = "".join(f"<p class='warn'>Data problem: {p}</p>" for p in problems)
+    imgs = "".join(f"<h3 id='{s['code']}'>{s['name']} ({s['depth_m']} m)</h3><img src='site_{s['code']}.png' alt='{s['name']}'>" for s in sites)
+    links = " · ".join(f"<a href='#{s['code']}'>{s['name']}</a>" for s in sites)
+    page = f"""<!doctype html><html><head><meta charset="utf-8"><title>ONC slope and canyon monitor</title>
+<style>body{{font-family:sans-serif;margin:16px;max-width:1500px}} table.status{{border-collapse:collapse;font-size:13px}}
+table.status td,table.status th{{padding:3px 8px;border-bottom:1px solid #ddd;text-align:right}} img{{max-width:100%}}
+p.warn{{color:#b00}} p.note{{color:#444;font-size:13px;max-width:1100px}}</style></head><body>
+<h2>ONC slope, canyon and shelf moorings off southwest Vancouver Island</h2>
+<p>Updated {run_time:%Y-%m-%d %H:%M} UTC. Site figures: {links}</p>
+<h3>Status: tide-removed temperature against the pre-2026 normal for the date</h3>{tbl}{warn}
+<p class="note">'Filtered' values use a Godin tidal filter (24-, 24- and 25-h running means), so they lag the latest data by ~35 h;
+'last 25 h mean' is the most recent near-tide-free value. The ±1 sd band describes tide-removed daily values, so 10-minute data
+routinely leave it. Baseline: {cfg['baseline_note']} Data: Ocean Networks Canada Oceans 3.0 (10-minute averages, ONC good-quality
+flags only, isolated salinity/oxygen spikes removed). Contains data from Ocean Networks Canada (CC-BY 4.0).</p>
+{fig.to_html(include_plotlyjs="cdn", full_html=False)}
+<h2>Site records: temperature, salinity and oxygen</h2>{imgs}</body></html>"""
+    (out_dir / "index.html").write_text(page, encoding="utf-8")
+
+
+# ---------------------------------------------------------------- main
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--recent-days", type=int, default=10)
+    ap.add_argument("--hires-days", type=int, default=60)
+    ap.add_argument("--out", default=str(HERE / "output"))
+    args = ap.parse_args()
+
+    cfg = json.loads((HERE / "sites.json").read_text())
+    base = pd.read_csv(HERE / "baseline_doy.csv")
+    cache_dir, out_dir = HERE / "cache", Path(args.out)
+    cache_dir.mkdir(exist_ok=True); out_dir.mkdir(parents=True, exist_ok=True)
+    tok = token()
+    run_time = datetime.now(timezone.utc)
+    year = run_time.year
+
+    H, G, T10, rows, problems = {}, {}, {}, [], []
+    for s in cfg["sites"]:
+        c = s["code"]
+        hist = pd.read_parquet(HERE / "history" / f"{c}_hourly_qc.parquet").astype(float)
+        hist_end = hist.index.max()
+        try:
+            live = update_cache(s, tok, hist_end, args.hires_days, cache_dir)
+        except Exception as e:
+            problems.append(f"{c}: {e}")
+            f = cache_dir / f"{c}_10min.parquet"
+            live = pd.read_parquet(f) if f.exists() else pd.DataFrame(columns=["T", "S", "O2"])
+        lh = live.rename(columns={"T": "temperature", "S": "salinity"}).resample("1h").mean() if len(live) else live
+        if len(lh):
+            lh.index = lh.index + pd.Timedelta("30min")          # match history's hourly-centre stamps
+            lh = lh[lh.index > hist_end]
+        h = pd.concat([hist, lh[["temperature", "salinity", "O2"]]]) if len(lh) else hist
+        h = h[~h.index.duplicated()].sort_index()
+        H[c] = h
+        T10[c] = live["T"].dropna() if len(live) else pd.Series(dtype=float)
+        G[c] = {v: godin(h[v].dropna()) for v, *_ in VARS if h[v].notna().sum() > 100}
+        G[c] = pd.DataFrame(G[c])
+
+        # status row
+        t = h["temperature"].dropna(); g = G[c]["temperature"].dropna()
+        rec = s["pre2026_records_godin"]["temperature"]
+        row = dict(site=s["name"], code=c, depth_m=s["depth_m"])
+        if len(t):
+            src = T10[c] if len(T10[c]) else t
+            last = src.index.max()
+            row.update(last_data_utc=last.strftime("%Y-%m-%d %H:%M"),
+                       last_25h_mean_C=round(src.loc[last - pd.Timedelta("25h"):].mean(), 3))
+        if len(g):
+            gt = g.index.max(); mu, sd = baseline(base, c, "temperature", pd.DatetimeIndex([gt]))
+            gy = noon(G[c]["temperature"]); gy = gy[gy.index >= pd.Timestamp(f"{year}-01-01", tz="UTC")]
+            row.update(filtered_valid_to_utc=gt.strftime("%Y-%m-%d %H:%M"), filtered_C=round(g.iloc[-1], 3),
+                       normal_C=round(mu[0], 3), anomaly_C=round(g.iloc[-1] - mu[0], 3), anomaly_sd=round((g.iloc[-1] - mu[0]) / sd[0], 1),
+                       max_filtered_this_year_C=round(gy.max(), 3) if len(gy) else np.nan,
+                       pre2026_record_C=rec["value"], new_record_this_year=bool(len(gy) and gy.max() > rec["value"]))
+        rows.append(row)
+        site_figure(s, h, G[c], base, year, out_dir / f"site_{c}.png")
+
+    st = pd.DataFrame(rows); st.to_csv(out_dir / "status.csv", index=False)
+    overview_pngs(cfg, base, H, G, T10, year, args.recent_days, run_time, out_dir)
+    write_html(cfg, base, H, G, T10, st, year, args.hires_days, run_time, out_dir, problems)
+    print(f"Updated {run_time:%Y-%m-%d %H:%M} UTC")
+    print(st.reindex(columns=["site", "last_data_utc", "last_25h_mean_C", "filtered_valid_to_utc", "anomaly_C", "anomaly_sd",
+                              "new_record_this_year"]).to_string(index=False))
+    for p in problems:
+        print("WARNING", p)
+    return 1 if len(problems) == len(cfg["sites"]) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
