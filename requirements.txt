@@ -4,3 +4,4 @@ pyarrow
 requests
 matplotlib
 plotly
+gsw

@@ -1,6 +1,6 @@
 {
- "baseline_note": "Day-of-year mean and sd of Godin-filtered (tide-removed) daily values, \u00b17-day window, all years before 2026; frozen 6 Nov 2026.",
- "records_note": "Pre-2026 extremes of Godin-filtered daily values (noon of each day): temperature max, salinity min, oxygen max and min.",
+ "baseline_note": "Day-of-year mean and sd of Godin-filtered (tide-removed) daily values (temperature, salinity, oxygen, sigma-theta), \u00b17-day window, all years before 2026; frozen 6 Nov 2026.",
+ "records_note": "Pre-2026 extremes of Godin-filtered daily values (noon of each day): temperature max, salinity min, oxygen max and min, sigma-theta min (lightest) and max.",
  "sites": [
   {
    "code": "FGPPN",
@@ -30,8 +30,21 @@
      "stat": "min",
      "value": 1.733,
      "date": "2016-09-13"
+    },
+    "sigma0": {
+     "stat": "min",
+     "value": 21.478,
+     "date": "2016-03-17"
+    },
+    "sigma0_max": {
+     "stat": "max",
+     "value": 25.355,
+     "date": "2025-07-08"
     }
-   }
+   },
+   "lat": 48.808292,
+   "lon": -125.2815,
+   "pressure_dbar": 25.2
   },
   {
    "code": "NCBC",
@@ -61,8 +74,21 @@
      "stat": "min",
      "value": 0.724,
      "date": "2025-05-01"
+    },
+    "sigma0": {
+     "stat": "min",
+     "value": 26.669,
+     "date": "2016-01-19"
+    },
+    "sigma0_max": {
+     "stat": "max",
+     "value": 26.968,
+     "date": "2013-05-05"
     }
-   }
+   },
+   "lat": 48.427313,
+   "lon": -126.174546,
+   "pressure_dbar": 399.8
   },
   {
    "code": "BACND",
@@ -92,8 +118,21 @@
      "stat": "min",
      "value": 0.19,
      "date": "2022-10-18"
+    },
+    "sigma0": {
+     "stat": "min",
+     "value": 26.998,
+     "date": "2019-01-19"
+    },
+    "sigma0_max": {
+     "stat": "max",
+     "value": 27.182,
+     "date": "2022-05-24"
     }
-   }
+   },
+   "lat": 48.345656,
+   "lon": -126.157925,
+   "pressure_dbar": 649.5
   },
   {
    "code": "BACHY",
@@ -123,8 +162,21 @@
      "stat": "min",
      "value": 0.239,
      "date": "2013-09-28"
+    },
+    "sigma0": {
+     "stat": "min",
+     "value": 27.204,
+     "date": "2023-08-17"
+    },
+    "sigma0_max": {
+     "stat": "max",
+     "value": 27.36,
+     "date": "2016-05-05"
     }
-   }
+   },
+   "lat": 48.312074,
+   "lon": -126.065841,
+   "pressure_dbar": 880.3
   },
   {
    "code": "BACME",
@@ -154,8 +206,21 @@
      "stat": "min",
      "value": 0.224,
      "date": "2023-03-23"
+    },
+    "sigma0": {
+     "stat": "min",
+     "value": 27.221,
+     "date": "2019-12-07"
+    },
+    "sigma0_max": {
+     "stat": "max",
+     "value": 27.377,
+     "date": "2011-12-07"
     }
-   }
+   },
+   "lat": 48.314899,
+   "lon": -126.058282,
+   "pressure_dbar": 904.6
   },
   {
    "code": "BACAX",
@@ -185,8 +250,21 @@
      "stat": "min",
      "value": 0.238,
      "date": "2014-10-10"
+    },
+    "sigma0": {
+     "stat": "min",
+     "value": 27.25,
+     "date": "2023-08-23"
+    },
+    "sigma0_max": {
+     "stat": "max",
+     "value": 27.423,
+     "date": "2016-05-05"
     }
-   }
+   },
+   "lat": 48.316653,
+   "lon": -126.050494,
+   "pressure_dbar": 993.7
   },
   {
    "code": "NC89",
@@ -216,8 +294,31 @@
      "stat": "min",
      "value": 0.363,
      "date": "2013-09-30"
+    },
+    "sigma0": {
+     "stat": "min",
+     "value": 27.453,
+     "date": "2023-02-10"
+    },
+    "sigma0_max": {
+     "stat": "max",
+     "value": 27.532,
+     "date": "2016-02-02"
     }
-   }
+   },
+   "lat": 48.670626,
+   "lon": -126.848013,
+   "pressure_dbar": 1271.6
   }
- ]
+ ],
+ "map": {
+  "image": "assets/gebco_barkley.png",
+  "bbox": [
+   -127.3,
+   48.15,
+   -124.9,
+   49.05
+  ],
+  "attribution": "Bathymetry: GEBCO Compilation Group (2025) GEBCO grid"
+ }
 }

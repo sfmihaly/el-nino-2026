@@ -13,12 +13,18 @@ Tides
   and taken at noon each day. The filtered series ends ~35 h before the latest
   data; the most recent hours are shown unfiltered.
 
+Density
+  σθ (TEOS-10 potential density anomaly, reference pressure 0) from temperature and
+  practical salinity at each site's nominal pressure (sites.json). The sensor depth
+  varies by about ±2 dbar, which changes σθ by less than 0.001 kg m⁻³.
+
 Outputs (output/)
   index.html                    overview page: status table, interactive temperature
                                 plot (zoom to 10-min detail) and the per-site figures
   overview_year.png             temperature, this year, all sites (report Figure 3 layout)
   overview_recent.png           last N days at 10-minute resolution
-  site_<SITE>.png               temperature, salinity, oxygen: full record + last 180 days
+  map.png                       station map, markers coloured by today's temperature anomaly
+  site_<SITE>.png               temperature, salinity, oxygen, σθ: full record + last 180 days
   status.csv                    latest values and anomalies
 
 Token: environment variable ONC_API_TOKEN or the file ~/.onc_token.
@@ -28,6 +34,7 @@ import argparse, json, os, sys, time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import gsw
 import numpy as np
 import pandas as pd
 import requests
@@ -45,7 +52,8 @@ GOOD = {7}                         # ONC flag: valid resampled average
 EV, BAND, CLIM, GREY = "#c0392b", "#cfd8e3", "#5b7a99", "0.6"
 VARS = [("temperature", "T", "Temperature (°C)", "max"),
         ("salinity", "S", "Salinity (PSS-78)", "min"),
-        ("O2", "O2", "Oxygen (ml/l)", "max")]
+        ("O2", "O2", "Oxygen (ml/l)", "max"),
+        ("sigma0", "SIG", "σθ (kg m⁻³)", "min")]
 plt.rcParams.update({"font.size": 8, "axes.spines.top": False, "axes.spines.right": False,
                      "xtick.direction": "out", "ytick.direction": "out"})
 
@@ -166,10 +174,19 @@ def baseline(base, code, var, index):
     return b["mean"].reindex(doy).to_numpy(), b["sd"].reindex(doy).to_numpy()
 
 
+def add_sigma0(h, s):
+    """σθ (kg m⁻³) from temperature and practical salinity at the site's nominal pressure."""
+    p = s["pressure_dbar"]
+    SA = gsw.SA_from_SP(h["salinity"].to_numpy(float), p, s["lon"], s["lat"])
+    CT = gsw.CT_from_t(SA, h["temperature"].to_numpy(float), p)
+    h = h.copy(); h["sigma0"] = gsw.sigma0(SA, CT)
+    return h
+
+
 # ---------------------------------------------------------------- figures
 def site_figure(s, H, G, base, year, out):
     """Per-site figure: rows T, S, O2; left full record (tide-removed daily), right last 180 days."""
-    fig, axs = plt.subplots(3, 2, figsize=(11, 7.8), sharex="col", sharey="row",
+    fig, axs = plt.subplots(len(VARS), 2, figsize=(11, 10.2), sharex="col", sharey="row",
                             gridspec_kw={"width_ratios": [2.4, 1], "wspace": 0.12, "hspace": 0.32})
     end = H.index.max()
     r0 = end - pd.Timedelta(days=180)
@@ -196,6 +213,8 @@ def site_figure(s, H, G, base, year, out):
         rlist = [(recs[v], stat)] if v in recs else []
         if v == "O2" and "O2_min" in recs:
             rlist.append((recs["O2_min"], "min"))
+        if v == "sigma0" and "sigma0_max" in recs:
+            rlist.append((recs["sigma0_max"], "max"))
         this = gd[gd.index >= y0]
         parts = []
         for rec, st_ in rlist:
@@ -209,9 +228,11 @@ def site_figure(s, H, G, base, year, out):
                 new = (x > rec["value"]) if st_ == "max" else (x < rec["value"])
                 parts.append(f"{year} {st_} {x:.3f} ({d:%d %b}) vs {rec['value']:.3f}" + (" — new record" if new else ""))
         if not len(this):
-            title = f"{name}: no valid data in {year}" + (" (sensor flagged bad by ONC)" if v == "salinity" else "")
+            title = f"{name}: no valid data in {year}" + (" (salinity sensor flagged bad by ONC)" if v in ("salinity", "sigma0") else "")
         else:
             title = f"{name}: " + "; ".join(parts)
+        if v == "sigma0" and len(this):
+            title += "  (lower = lighter water)"
         a.set_title(title, loc="left", fontsize=9)
         a.set_ylabel(lab)
         vals = pd.concat([gd, hh]).dropna()
@@ -222,20 +243,61 @@ def site_figure(s, H, G, base, year, out):
             pad = 0.1 * (hi - lo) if hi > lo else 0.1
             a.set_ylim(lo - pad, hi + pad)
     axs[0, 1].set_title("Last 180 days: hourly (grey), tide-removed (red)", loc="left", fontsize=9)
-    axs[2, 0].xaxis.set_major_locator(mdates.YearLocator(2)); axs[2, 0].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-    axs[2, 1].xaxis.set_major_locator(mdates.MonthLocator(bymonth=[1, 3, 5, 7, 9, 11]))
-    axs[2, 1].xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
-    axs[2, 1].set_xlim(r0, end + pd.Timedelta("2D"))
+    axs[-1, 0].xaxis.set_major_locator(mdates.YearLocator(2)); axs[-1, 0].xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    axs[-1, 1].xaxis.set_major_locator(mdates.MonthLocator(bymonth=[1, 3, 5, 7, 9, 11]))
+    axs[-1, 1].xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+    axs[-1, 1].set_xlim(r0, end + pd.Timedelta("2D"))
     fig.legend([Line2D([], [], color=GREY, lw=1), Line2D([], [], color=EV, lw=1.3), Line2D([], [], color="k", ls="--", lw=0.8),
                 Patch(color=BAND), Line2D([], [], color=CLIM, lw=0.9)],
                [f"tide-removed daily, before {year} (right: hourly)", f"tide-removed, {year}", "pre-2026 record (tide-removed)",
                 "day-of-year mean ± 1 sd (pre-2026)", "day-of-year mean"],
-               loc="lower left", bbox_to_anchor=(0.06, 0.015), fontsize=7, ncol=5, frameon=False)
+               loc="lower left", bbox_to_anchor=(0.06, 0.01), fontsize=7, ncol=5, frameon=False)
     fig.suptitle(f"ONC {s['name']} ({s['code']}, {s['depth_m']} m) — data to {end:%Y-%m-%d %H:%M} UTC", x=0.06, ha="left", fontsize=10)
-    fig.text(0.06, -0.005, "Tide-removed = Godin filter (24-24-25 h), noon value each day. Salinity and oxygen are not corrected "
-             "for offsets between instruments; artefact masking was applied by hand only to data before 6 Nov 2026.",
+    fig.text(0.06, -0.02, "Tide-removed = Godin filter (24-24-25 h), noon value each day. σθ = TEOS-10 potential density anomaly at the "
+             "nominal sensor pressure.\nSalinity, σθ and oxygen are not corrected for offsets between instruments; artefact masking "
+             "was applied by hand only to data before 6 Nov 2026.",
              fontsize=6.5, color="0.35")
     fig.savefig(out, dpi=150, bbox_inches="tight"); plt.close(fig)
+
+
+def map_png(cfg, st, out_dir):
+    """Station map on GEBCO bathymetry; markers coloured by the latest temperature anomaly (sd)."""
+    import matplotlib.patheffects as pe
+    from matplotlib.colors import TwoSlopeNorm
+    m = cfg["map"]; x0, y0, x1, y1 = m["bbox"]
+    img = plt.imread(HERE / m["image"])
+    fig, ax = plt.subplots(figsize=(8.6, 5.2))
+    ax.imshow(img, extent=(x0, x1, y0, y1), origin="upper", interpolation="bilinear")
+    ax.set_aspect(1 / np.cos(np.radians((y0 + y1) / 2)))
+    norm = TwoSlopeNorm(vmin=-5, vcenter=0, vmax=5); cmap = plt.get_cmap("RdBu_r")
+    an = st.set_index("code")["anomaly_sd"] if "anomaly_sd" in st else pd.Series(dtype=float)
+    halo = [pe.withStroke(linewidth=2.5, foreground="white")]
+    canyon = [s for s in cfg["sites"] if s["code"] in ("BACHY", "BACME", "BACAX")]
+    for s in cfg["sites"]:
+        v = an.get(s["code"], np.nan)
+        col = cmap(norm(np.clip(v, -5, 5))) if pd.notna(v) else "white"
+        ax.plot(s["lon"], s["lat"], "o", color=col, mec="k", ms=9, mew=0.8, zorder=5)
+        if s in canyon:
+            continue
+        txt = f"{s['name']} {s['depth_m']} m" + (f"\n{v:+.1f} sd" if pd.notna(v) else "")
+        left = s["lon"] < -126.5
+        ax.annotate(txt, (s["lon"], s["lat"]), xytext=(9 if left else -9, 0), textcoords="offset points", fontsize=7.5,
+                    ha="left" if left else "right", va="center", path_effects=halo)
+    if canyon:
+        lab = "Barkley Canyon floor\n" + "\n".join(
+            f"{s['name']} {s['depth_m']} m" + (f"  {an.get(s['code'], np.nan):+.1f} sd" if pd.notna(an.get(s["code"], np.nan)) else "")
+            for s in canyon)
+        c0 = canyon[-1]
+        ax.annotate(lab, (c0["lon"], c0["lat"]), xytext=(14, 4), textcoords="offset points", fontsize=7.5, ha="left", va="center",
+                    path_effects=halo)
+    ax.set_xlim(x0, x1); ax.set_ylim(y0, y1)
+    ax.set_xlabel("Longitude (°E)"); ax.set_ylabel("Latitude (°N)")
+    cb = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, fraction=0.03, pad=0.02)
+    cb.set_label("Temperature anomaly today (sd)")
+    ax.text(0.01, 0.01, m["attribution"], transform=ax.transAxes, fontsize=6.5, color="0.25")
+    ax.text(0.73, 0.97, "Vancouver Island", transform=ax.transAxes, fontsize=8.5, style="italic", va="top", path_effects=halo)
+    ax.text(0.10, 0.12, "Pacific Ocean", transform=ax.transAxes, fontsize=8.5, style="italic", color="0.2")
+    fig.savefig(out_dir / "map.png", dpi=150, bbox_inches="tight"); plt.close(fig)
 
 
 def overview_pngs(cfg, base, H, G, T10, year, recent_days, run_time, out_dir):
@@ -329,25 +391,53 @@ def write_html(cfg, base, H, G, T10, st, year, hires_days, run_time, out_dir, pr
     fig.update_layout(height=230 * n, template="simple_white", hovermode="x unified",
                       legend=dict(orientation="h", y=1.03, x=0, font=dict(size=11)), margin=dict(l=60, r=20, t=110, b=40),
                       title=dict(text=f"Temperature, {year} — dashed line: pre-2026 tide-removed maximum", x=0, font=dict(size=14)))
+    # ---- compact summary table (the one shown in the overview)
+    def cell_anom(x, xs, unit, fmt):
+        return "—" if pd.isna(x) else f"{x:{fmt}} {unit} ({xs:+.1f} sd)"
+    srows = []
+    for _, r in st.iterrows():
+        rec = (f"yes, {r['max_filtered_this_year_C']:.2f} °C on {r['max_filtered_date']}"
+               if r.get("new_record_this_year") is True else "no")
+        light = "yes" if r.get("lightest_on_record_this_year") is True else ("—" if pd.isna(r.get("sigma0_anomaly")) else "no")
+        srows.append(f"<tr><td class='l'>{r['site']}</td><td>{r['depth_m']} m</td>"
+                     f"<td>{cell_anom(r.get('anomaly_C'), r.get('anomaly_sd'), '°C', '+.2f')}</td>"
+                     f"<td>{cell_anom(r.get('sigma0_anomaly'), r.get('sigma0_anomaly_sd'), 'kg m⁻³', '+.3f')}</td>"
+                     f"<td class='l'>{rec}</td><td class='l'>{light}</td></tr>")
+    vt = st["filtered_valid_to_utc"].dropna()
+    valid = pd.to_datetime(vt).min().strftime("%d %b %Y") if len(vt) else "—"
+    summary = ("<table class='status'><tr><th class='l'>Site</th><th>Depth</th><th>Temperature anomaly</th><th>σθ anomaly</th>"
+               f"<th class='l'>New {year} temperature record?</th><th class='l'>Lightest σθ on record in {year}?</th></tr>"
+               + "".join(srows) + "</table>")
     cols = ["site", "depth_m", "last_data_utc", "last_25h_mean_C", "filtered_valid_to_utc", "filtered_C", "normal_C",
-            "anomaly_C", "anomaly_sd", "max_filtered_this_year_C", "pre2026_record_C", "new_record_this_year"]
-    tbl = st.reindex(columns=cols).to_html(index=False, border=0, classes="status", na_rep="")
+            "anomaly_C", "anomaly_sd", "max_filtered_this_year_C", "pre2026_record_C", "new_record_this_year",
+            "sigma0_filtered", "sigma0_normal", "sigma0_anomaly", "sigma0_anomaly_sd", "sigma0_min_this_year",
+            "pre2026_sigma0_min", "lightest_on_record_this_year"]
+    detail = st.reindex(columns=cols).to_html(index=False, border=0, classes="status", na_rep="")
     warn = "".join(f"<p class='warn'>Data problem: {p}</p>" for p in problems)
     imgs = "".join(f"<h3 id='{s['code']}'>{s['name']} ({s['depth_m']} m)</h3><img src='site_{s['code']}.png' alt='{s['name']}'>" for s in sites)
     links = " · ".join(f"<a href='#{s['code']}'>{s['name']}</a>" for s in sites)
     page = f"""<!doctype html><html><head><meta charset="utf-8"><title>ONC slope and canyon monitor</title>
 <style>body{{font-family:sans-serif;margin:16px;max-width:1500px}} table.status{{border-collapse:collapse;font-size:13px}}
-table.status td,table.status th{{padding:3px 8px;border-bottom:1px solid #ddd;text-align:right}} img{{max-width:100%}}
-p.warn{{color:#b00}} p.note{{color:#444;font-size:13px;max-width:1100px}}</style></head><body>
+table.status td,table.status th{{padding:3px 10px;border-bottom:1px solid #ddd;text-align:right}} .l{{text-align:left!important}}
+img{{max-width:100%}} img.map{{max-width:900px}} p.warn{{color:#b00}} p.note{{color:#444;font-size:13px;max-width:1100px}}
+details{{margin:8px 0 16px 0}} summary{{cursor:pointer;color:#333}}</style></head><body>
 <h2>ONC slope, canyon and shelf moorings off southwest Vancouver Island</h2>
 <p>Updated {run_time:%Y-%m-%d %H:%M} UTC. Site figures: {links}</p>
-<h3>Status: tide-removed temperature against the pre-2026 normal for the date</h3>{tbl}{warn}
-<p class="note">'Filtered' values use a Godin tidal filter (24-, 24- and 25-h running means), so they lag the latest data by ~35 h;
-'last 25 h mean' is the most recent near-tide-free value. The ±1 sd band describes tide-removed daily values, so 10-minute data
-routinely leave it. Baseline: {cfg['baseline_note']} Data: Ocean Networks Canada Oceans 3.0 (10-minute averages, ONC good-quality
-flags only, isolated salinity/oxygen spikes removed). Contains data from Ocean Networks Canada (CC-BY 4.0).</p>
+<img class="map" src="map.png" alt="Station map">
+<h3>Today against the pre-2026 normal for the date (tide-removed values to {valid})</h3>
+{summary}{warn}
+<p class="note">Anomaly = latest tide-removed daily value minus the pre-2026 normal for that calendar date; "sd" is the spread of
+pre-2026 daily values within ±7 days of the date. This is a day-against-day comparison and is not the window-mean sd used in the
+report. σθ = TEOS-10 potential density anomaly; a negative σθ anomaly means lighter water than normal at that depth (density
+surfaces pushed down). σθ needs valid salinity, so it is unavailable at Clayoquot Slope, whose salinity sensor has been flagged bad
+by ONC since Dec 2024.</p>
+<details><summary>Full status table (also in <a href="status.csv">status.csv</a>)</summary>{detail}</details>
+<p class="note">Tide-removed values use a Godin filter (24-, 24- and 25-h running means), so they lag the latest data by ~35 h;
+'last 25 h mean' is the most recent near-tide-free value. Baseline: {cfg['baseline_note']} Data: Ocean Networks Canada Oceans 3.0
+(10-minute averages, ONC good-quality flags only, isolated salinity/oxygen spikes removed). Contains data from Ocean Networks Canada
+(CC-BY 4.0). {cfg['map']['attribution']}.</p>
 {fig.to_html(include_plotlyjs="cdn", full_html=False)}
-<h2>Site records: temperature, salinity and oxygen</h2>{imgs}</body></html>"""
+<h2>Site records: temperature, salinity, oxygen and σθ</h2>{imgs}</body></html>"""
     (out_dir / "index.html").write_text(page, encoding="utf-8")
 
 
@@ -384,6 +474,7 @@ def main():
             lh = lh[lh.index > hist_end]
         h = pd.concat([hist, lh[["temperature", "salinity", "O2"]]]) if len(lh) else hist
         h = h[~h.index.duplicated()].sort_index()
+        h = add_sigma0(h, s)
         H[c] = h
         T10[c] = live["T"].dropna() if len(live) else pd.Series(dtype=float)
         G[c] = {v: godin(h[v].dropna()) for v, *_ in VARS if h[v].notna().sum() > 100}
@@ -405,15 +496,31 @@ def main():
                        normal_C=round(mu[0], 3), anomaly_C=round(g.iloc[-1] - mu[0], 3), anomaly_sd=round((g.iloc[-1] - mu[0]) / sd[0], 1),
                        max_filtered_this_year_C=round(gy.max(), 3) if len(gy) else np.nan,
                        pre2026_record_C=rec["value"], new_record_this_year=bool(len(gy) and gy.max() > rec["value"]))
+        gs = G[c]["sigma0"].dropna() if "sigma0" in G[c] else pd.Series(dtype=float)
+        if len(gs) and len(g) and gs.index.max() < g.index.max() - pd.Timedelta("3D"):
+            gs = gs.iloc[0:0]            # no recent valid salinity -> no current σθ anomaly
+        if len(gs):
+            mu, sd = baseline(base, c, "sigma0", pd.DatetimeIndex([gs.index.max()]))
+            gsy = noon(G[c]["sigma0"]); gsy = gsy[gsy.index >= pd.Timestamp(f"{year}-01-01", tz="UTC")]
+            srec = s["pre2026_records_godin"]["sigma0"]
+            row.update(sigma0_filtered=round(gs.iloc[-1], 3), sigma0_normal=round(mu[0], 3),
+                       sigma0_anomaly=round(gs.iloc[-1] - mu[0], 3), sigma0_anomaly_sd=round((gs.iloc[-1] - mu[0]) / sd[0], 1),
+                       sigma0_min_this_year=round(gsy.min(), 3) if len(gsy) else np.nan, pre2026_sigma0_min=srec["value"],
+                       lightest_on_record_this_year=bool(len(gsy) and gsy.min() < srec["value"]))
+        if len(g):
+            gy = noon(G[c]["temperature"]); gy = gy[gy.index >= pd.Timestamp(f"{year}-01-01", tz="UTC")]
+            if len(gy):
+                row.update(max_filtered_date=gy.idxmax().strftime("%d %b"))
         rows.append(row)
         site_figure(s, h, G[c], base, year, out_dir / f"site_{c}.png")
 
     st = pd.DataFrame(rows); st.to_csv(out_dir / "status.csv", index=False)
+    map_png(cfg, st, out_dir)
     overview_pngs(cfg, base, H, G, T10, year, args.recent_days, run_time, out_dir)
     write_html(cfg, base, H, G, T10, st, year, args.hires_days, run_time, out_dir, problems)
     print(f"Updated {run_time:%Y-%m-%d %H:%M} UTC")
-    print(st.reindex(columns=["site", "last_data_utc", "last_25h_mean_C", "filtered_valid_to_utc", "anomaly_C", "anomaly_sd",
-                              "new_record_this_year"]).to_string(index=False))
+    print(st.reindex(columns=["site", "last_data_utc", "filtered_valid_to_utc", "anomaly_C", "anomaly_sd",
+                              "sigma0_anomaly", "sigma0_anomaly_sd", "new_record_this_year", "lightest_on_record_this_year"]).to_string(index=False))
     for p in problems:
         print("WARNING", p)
     return 1 if len(problems) == len(cfg["sites"]) else 0

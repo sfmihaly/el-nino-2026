@@ -1,6 +1,6 @@
 # ONC slope and canyon monitor
 
-Daily-updated view of temperature, salinity and oxygen at Ocean Networks Canada
+Daily-updated view of temperature, salinity, oxygen and density (σθ) at Ocean Networks Canada
 moorings off southwest Vancouver Island, compared with their pre-2026 record:
 
 | Site | ONC location | Depth |
@@ -20,11 +20,15 @@ Context: record subsurface warmth on the slope and in Barkley Canyon in autumn
 
 `index.html` (the published page) contains:
 
-1. a status table: tide-removed temperature against the pre-2026 normal for the date,
-   the largest tide-removed value this year and whether it beats the pre-2026 record;
-2. an interactive temperature plot for all sites (zoom to 10-minute detail;
+1. a station map on GEBCO bathymetry (`map.png`), each marker coloured by that day's
+   temperature anomaly;
+2. a summary table: for each site, the temperature and σθ anomaly against the
+   pre-2026 normal for the date (in units and in sd), whether 2026 has set a new
+   tide-removed temperature record, and whether σθ has been lighter than any pre-2026
+   value; the full status table is folded underneath;
+3. an interactive temperature plot for all sites (zoom to 10-minute detail;
    buttons for 3 days to the full year);
-3. one figure per site (`site_<SITE>.png`) with temperature, salinity and oxygen:
+4. one figure per site (`site_<SITE>.png`) with temperature, salinity, oxygen and σθ:
    the full record on the left, the last 180 days against the seasonal cycle on
    the right.
 
@@ -39,6 +43,8 @@ and `status.csv`.
   (conductivity-cell fouling) masked by hand. Data after that are fetched live as
   10-minute averages (good flags only, isolated spikes removed automatically) and
   cached in `cache/`. Live data have **no** hand masking.
+- **Map**: `assets/gebco_barkley.png` is a static GEBCO WMS image of the map area
+  (`map.bbox` in `sites.json`); station positions are from the ONC locations service.
 - **Tides**: temperature swings by up to ~0.5 °C over a tidal cycle at some sites,
   and a 24-h block mean leaks part of the M2 and O1 tides (aliased to ~14–15-day
   periods). All daily values here therefore use a Godin filter (24-, 24- and 25-h
@@ -48,7 +54,17 @@ and `status.csv`.
   mean and standard deviation of tide-removed daily values within ±7 days, from all
   years before 2026. **Records** (`sites.json`): pre-2026 tide-removed temperature
   maximum, salinity minimum and oxygen maximum.
-- Salinity and oxygen are not corrected for offsets between instruments; changes of a
+- **Density**: σθ is the TEOS-10 potential density anomaly (reference pressure 0 dbar),
+  computed from temperature and practical salinity at each site's nominal pressure
+  (`pressure_dbar` in `sites.json`). Sensor depth varies by about ±2 dbar, which
+  changes σθ by less than 0.001 kg m⁻³. A lower σθ than normal at a fixed sensor
+  means lighter water, i.e. density surfaces pushed down. σθ needs valid salinity,
+  so it is missing whenever salinity is (e.g. Clayoquot Slope since Dec 2024).
+- **Anomalies in sd** (summary table and map) compare one tide-removed day with the
+  spread of pre-2026 daily values within ±7 days of that date. They are relative
+  indicators, not probabilities, and are not the same as the window-mean sd used in
+  the report.
+- Salinity, σθ and oxygen are not corrected for offsets between instruments; changes of a
   few hundredths in salinity or oxygen across an instrument change may be offsets.
   Clayoquot Slope salinity has been flagged bad by ONC since Dec 2024 (sensor drift).
 
