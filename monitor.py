@@ -50,6 +50,7 @@ HERE = Path(__file__).resolve().parent
 RESAMPLE_S = 600
 GOOD = {7}                         # ONC flag: valid resampled average
 EV, BAND, CLIM, GREY = "#c0392b", "#cfd8e3", "#5b7a99", "0.6"
+EN_COL, EN_TXT, BLOB_COL = "#f4a261", "#b5651d", "#7b6fb0"   # event shading
 VARS = [("temperature", "T", "Temperature (°C)", "max"),
         ("salinity", "S", "Salinity (PSS-78)", "min"),
         ("O2", "O2", "Oxygen (ml/l)", "max"),
@@ -174,6 +175,18 @@ def baseline(base, code, var, index):
     return b["mean"].reindex(doy).to_numpy(), b["sd"].reindex(doy).to_numpy()
 
 
+def apply_masks(h, s):
+    """Blank hand-identified bad intervals listed under the site's "masks" in sites.json.
+    end = null means the mask is still open (applies to all later data)."""
+    for m in s.get("masks", []):
+        t0 = pd.Timestamp(m["start"])
+        t1 = pd.Timestamp(m["end"]) if m.get("end") else h.index.max()
+        for v in m["vars"]:
+            if v in h:
+                h.loc[(h.index >= t0) & (h.index <= t1), v] = np.nan
+    return h
+
+
 def add_sigma0(h, s):
     """σθ (kg m⁻³) from temperature and practical salinity at the site's nominal pressure."""
     p = s["pressure_dbar"]
@@ -183,8 +196,46 @@ def add_sigma0(h, s):
     return h
 
 
+def draw_events(axs, events, end):
+    """Shade El Niño (filled) and Blob (hatched) periods on every panel; label them above the top row.
+    axs is the (rows, 2) array of site-figure axes; the x-limits are left as they are."""
+    import matplotlib.transforms as mtransforms
+    if not events:
+        return
+    ev = []
+    for e in events:
+        a = pd.Timestamp(e["start"], tz="UTC")
+        b = pd.Timestamp(e["end"], tz="UTC") if e.get("end") else end
+        ev.append((e["kind"], e["label"], a, b))
+    lims = [ax.get_xlim() for ax in axs[0]]
+    for row in axs:
+        for ax in row:
+            for kind, _, a, b in ev:
+                if kind == "blob":
+                    ax.axvspan(a, b, facecolor="none", edgecolor=BLOB_COL, hatch="////", lw=0, alpha=0.35, zorder=0)
+                else:
+                    ax.axvspan(a, b, color=EN_COL, alpha=0.22, lw=0, zorder=0)
+    for col, ax in enumerate(axs[0]):
+        x0, x1 = mdates.num2date(lims[col][0]), mdates.num2date(lims[col][1])
+        tr = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
+        for kind, lab, a, b in ev:
+            lo, hi = max(a, x0), min(b, x1)
+            if lo >= hi:
+                continue
+            mid = lo + (hi - lo) / 2
+            if kind == "blob":
+                ax.text(mid, 1.075, lab, transform=tr, ha="center", va="bottom", fontsize=7, color=BLOB_COL, clip_on=False)
+            else:
+                ax.text(mid, 1.015, lab if col == 0 else f"El Niño {lab}", transform=tr, ha="center", va="bottom",
+                        fontsize=7, color=EN_TXT, clip_on=False)
+        ax.set_title(ax.get_title(loc="left"), loc="left", fontsize=9, pad=24)
+    for col in (0, 1):                       # spans must not widen the time axis
+        for row in axs:
+            row[col].set_xlim(lims[col])
+
+
 # ---------------------------------------------------------------- figures
-def site_figure(s, H, G, base, year, out):
+def site_figure(s, H, G, base, year, out, events=None):
     """Per-site figure: rows T, S, O2; left full record (tide-removed daily), right last 180 days."""
     fig, axs = plt.subplots(len(VARS), 2, figsize=(11, 10.2), sharex="col", sharey="row",
                             gridspec_kw={"width_ratios": [2.4, 1], "wspace": 0.12, "hspace": 0.32})
@@ -247,6 +298,11 @@ def site_figure(s, H, G, base, year, out):
     axs[-1, 1].xaxis.set_major_locator(mdates.MonthLocator(bymonth=[1, 3, 5, 7, 9, 11]))
     axs[-1, 1].xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
     axs[-1, 1].set_xlim(r0, end + pd.Timedelta("2D"))
+    draw_events(axs, events, end)
+    if events:
+        fig.legend([Patch(facecolor=EN_COL, alpha=0.4), Patch(facecolor="white", edgecolor=BLOB_COL, hatch="////")],
+                   ["El Niño (NOAA ONI ≥ +0.5 °C, to nearest month)", "The Blob, NE Pacific marine heatwave"],
+                   loc="lower left", bbox_to_anchor=(0.06, 0.035), fontsize=7, ncol=2, frameon=False)
     fig.legend([Line2D([], [], color=GREY, lw=1), Line2D([], [], color=EV, lw=1.3), Line2D([], [], color="k", ls="--", lw=0.8),
                 Patch(color=BAND), Line2D([], [], color=CLIM, lw=0.9)],
                [f"tide-removed daily, before {year} (right: hourly)", f"tide-removed, {year}", "pre-2026 record (tide-removed)",
@@ -255,7 +311,7 @@ def site_figure(s, H, G, base, year, out):
     fig.suptitle(f"ONC {s['name']} ({s['code']}, {s['depth_m']} m) — data to {end:%Y-%m-%d %H:%M} UTC", x=0.06, ha="left", fontsize=10)
     fig.text(0.06, -0.02, "Tide-removed = Godin filter (24-24-25 h), noon value each day. σθ = TEOS-10 potential density anomaly at the "
              "nominal sensor pressure.\nSalinity, σθ and oxygen are not corrected for offsets between instruments; artefact masking "
-             "was applied by hand only to data before 6 Nov 2026.",
+             "was applied by hand to data before 6 Nov 2026; later data are masked only where listed on the monitor page.",
              fontsize=6.5, color="0.35")
     fig.savefig(out, dpi=150, bbox_inches="tight"); plt.close(fig)
 
@@ -352,6 +408,16 @@ def overview_pngs(cfg, base, H, G, T10, year, recent_days, run_time, out_dir):
     fig.savefig(out_dir / "overview_recent.png", dpi=170, bbox_inches="tight"); plt.close(fig)
 
 
+def mask_note(cfg):
+    items = []
+    for s in cfg["sites"]:
+        for m in s.get("masks", []):
+            t0 = pd.Timestamp(m["start"]).strftime("%d %b %Y %H:%M UTC")
+            t1 = pd.Timestamp(m["end"]).strftime("%d %b %Y %H:%M UTC") if m.get("end") else "present"
+            items.append(f"<li>{s['name']}: {', '.join(m['vars'])} (and σθ) removed {t0} – {t1}. {m.get('reason', '')}</li>")
+    return f'<p class="note"><b>Data removed by hand:</b></p><ul class="note">{"".join(items)}</ul>' if items else ""
+
+
 def write_html(cfg, base, H, G, T10, st, year, hires_days, run_time, out_dir, problems):
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -430,14 +496,15 @@ details{{margin:8px 0 16px 0}} summary{{cursor:pointer;color:#333}}</style></hea
 pre-2026 daily values within ±7 days of the date. This is a day-against-day comparison and is not the window-mean sd used in the
 report. σθ = TEOS-10 potential density anomaly; a negative σθ anomaly means lighter water than normal at that depth (density
 surfaces pushed down). σθ needs valid salinity, so it is unavailable at Clayoquot Slope, whose salinity sensor has been flagged bad
-by ONC since Dec 2024.</p>
+by ONC since Dec 2024.</p>{mask_note(cfg)}
 <details><summary>Full status table (also in <a href="status.csv">status.csv</a>)</summary>{detail}</details>
 <p class="note">Tide-removed values use a Godin filter (24-, 24- and 25-h running means), so they lag the latest data by ~35 h;
 'last 25 h mean' is the most recent near-tide-free value. Baseline: {cfg['baseline_note']} Data: Ocean Networks Canada Oceans 3.0
 (10-minute averages, ONC good-quality flags only, isolated salinity/oxygen spikes removed). Contains data from Ocean Networks Canada
 (CC-BY 4.0). {cfg['map']['attribution']}.</p>
 {fig.to_html(include_plotlyjs="cdn", full_html=False)}
-<h2>Site records: temperature, salinity, oxygen and σθ</h2>{imgs}</body></html>"""
+<h2>Site records: temperature, salinity, oxygen and σθ</h2>
+<p class="note">{cfg.get("events_note", "")}</p>{imgs}</body></html>"""
     (out_dir / "index.html").write_text(page, encoding="utf-8")
 
 
@@ -474,6 +541,7 @@ def main():
             lh = lh[lh.index > hist_end]
         h = pd.concat([hist, lh[["temperature", "salinity", "O2"]]]) if len(lh) else hist
         h = h[~h.index.duplicated()].sort_index()
+        h = apply_masks(h, s)
         h = add_sigma0(h, s)
         H[c] = h
         T10[c] = live["T"].dropna() if len(live) else pd.Series(dtype=float)
@@ -497,22 +565,24 @@ def main():
                        max_filtered_this_year_C=round(gy.max(), 3) if len(gy) else np.nan,
                        pre2026_record_C=rec["value"], new_record_this_year=bool(len(gy) and gy.max() > rec["value"]))
         gs = G[c]["sigma0"].dropna() if "sigma0" in G[c] else pd.Series(dtype=float)
+        if len(gs):
+            gsy = noon(G[c]["sigma0"]).dropna(); gsy = gsy[gsy.index >= pd.Timestamp(f"{year}-01-01", tz="UTC")]
+            srec = s["pre2026_records_godin"]["sigma0"]
+            if len(gsy):                 # records use all valid σθ this year, even if salinity is not current
+                row.update(sigma0_min_this_year=round(gsy.min(), 3), pre2026_sigma0_min=srec["value"],
+                           lightest_on_record_this_year=bool(gsy.min() < srec["value"]))
         if len(gs) and len(g) and gs.index.max() < g.index.max() - pd.Timedelta("3D"):
             gs = gs.iloc[0:0]            # no recent valid salinity -> no current σθ anomaly
         if len(gs):
             mu, sd = baseline(base, c, "sigma0", pd.DatetimeIndex([gs.index.max()]))
-            gsy = noon(G[c]["sigma0"]); gsy = gsy[gsy.index >= pd.Timestamp(f"{year}-01-01", tz="UTC")]
-            srec = s["pre2026_records_godin"]["sigma0"]
             row.update(sigma0_filtered=round(gs.iloc[-1], 3), sigma0_normal=round(mu[0], 3),
-                       sigma0_anomaly=round(gs.iloc[-1] - mu[0], 3), sigma0_anomaly_sd=round((gs.iloc[-1] - mu[0]) / sd[0], 1),
-                       sigma0_min_this_year=round(gsy.min(), 3) if len(gsy) else np.nan, pre2026_sigma0_min=srec["value"],
-                       lightest_on_record_this_year=bool(len(gsy) and gsy.min() < srec["value"]))
+                       sigma0_anomaly=round(gs.iloc[-1] - mu[0], 3), sigma0_anomaly_sd=round((gs.iloc[-1] - mu[0]) / sd[0], 1))
         if len(g):
             gy = noon(G[c]["temperature"]); gy = gy[gy.index >= pd.Timestamp(f"{year}-01-01", tz="UTC")]
             if len(gy):
                 row.update(max_filtered_date=gy.idxmax().strftime("%d %b"))
         rows.append(row)
-        site_figure(s, h, G[c], base, year, out_dir / f"site_{c}.png")
+        site_figure(s, h, G[c], base, year, out_dir / f"site_{c}.png", events=cfg.get("events"))
 
     st = pd.DataFrame(rows); st.to_csv(out_dir / "status.csv", index=False)
     map_png(cfg, st, out_dir)

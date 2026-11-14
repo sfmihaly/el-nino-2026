@@ -67,6 +67,15 @@ and `status.csv`.
 - Salinity, σθ and oxygen are not corrected for offsets between instruments; changes of a
   few hundredths in salinity or oxygen across an instrument change may be offsets.
   Clayoquot Slope salinity has been flagged bad by ONC since Dec 2024 (sensor drift).
+- **Hand masks for live data**: live data get only automatic spike removal. A sensor
+  fault that the spike filter misses (e.g. a salinity step from conductivity-cell
+  fouling) can be blanked by adding an entry to that site's `masks` list in
+  `sites.json`:
+  `{"vars": ["salinity"], "start": "2026-11-11T10:30:00Z", "end": null, "reason": "..."}`.
+  `end: null` keeps the mask open; set an end time (or delete the entry) when the sensor
+  recovers. Masked salinity also removes σθ. Active masks are listed on the web page.
+  Current mask: Hydrates salinity from 11 Nov 2026 10:30 UTC (step of about −0.12 with
+  no change in temperature or oxygen).
 
 ## Run it on a Mac
 
