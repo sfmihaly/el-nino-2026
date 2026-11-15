@@ -319,6 +319,67 @@
       "lat": 48.670626,
       "lon": -126.848013,
       "pressure_dbar": 1271.6
+    },
+    {
+      "code": "NC27",
+      "name": "Cascadia Basin",
+      "depth_m": 2658,
+      "history_start": "2009-09-02",
+      "history_end": "2026-11-06 17:30",
+      "despike_floor_salinity": 0.006,
+      "despike_floor_O2": 0.05,
+      "pre2026_records_godin": {
+        "temperature": {
+          "stat": "max",
+          "value": 1.797,
+          "date": "2013-04-11"
+        },
+        "salinity": {
+          "stat": "min",
+          "value": 34.622,
+          "date": "2020-02-06"
+        },
+        "O2": {
+          "stat": "max",
+          "value": 1.792,
+          "date": "2020-09-17"
+        },
+        "O2_min": {
+          "stat": "min",
+          "value": 1.445,
+          "date": "2025-11-08"
+        },
+        "sigma0": {
+          "stat": "min",
+          "value": 27.722,
+          "date": "2020-02-06"
+        },
+        "sigma0_max": {
+          "stat": "max",
+          "value": 27.742,
+          "date": "2022-10-08"
+        }
+      },
+      "lat": 47.76266,
+      "lon": -127.75891,
+      "pressure_dbar": 2697.6,
+      "no_records": [
+        "salinity",
+        "O2",
+        "sigma0"
+      ],
+      "no_records_note": "no records or anomalies (steps between instruments exceed the natural range at this depth)",
+      "masks_history": [
+        {
+          "vars": [
+            "temperature"
+          ],
+          "start": "2023-01-25",
+          "end": "2023-07-11 12:00",
+          "reason": "instrument fault (noisy temperature; salinity and oxygen flagged bad by ONC); masked in the frozen history"
+        }
+      ],
+      "location_note": "ODP 1026 borehole site, Cascadia Basin abyssal plain"
     }
   ],
   "map": {

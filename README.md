@@ -12,6 +12,7 @@ moorings off southwest Vancouver Island, compared with their pre-2026 record:
 | Barkley Mid-East | BACME | 895 m |
 | Barkley Canyon Axis | BACAX | 983 m |
 | Clayoquot Slope (Bullseye) | NC89 | 1257 m |
+| Cascadia Basin (ODP 1026, abyssal plain) | NC27 | 2658 m |
 
 Context: record subsurface warmth on the slope and in Barkley Canyon in autumn
 2026, during a strong El Niño.
@@ -41,8 +42,20 @@ and `status.csv`.
   record to 6 Nov 2026 (frozen). Hourly averages from ONC Oceans 3.0, ONC good flags
   only, isolated salinity/oxygen spikes removed, and salinity artefact episodes
   (conductivity-cell fouling) masked by hand. Data after that are fetched live as
-  10-minute averages (good flags only, isolated spikes removed automatically) and
-  cached in `cache/`. Live data have **no** hand masking.
+  10-minute averages (good flags only) and cached unfiltered in
+  `cache/<SITE>_10min_raw.parquet`. Spikes are removed when the data are read: a value
+  is flagged if it departs from a 5-h running median by more than 8 robust sd and a
+  per-site floor; for salinity, the part of that departure explained by temperature's
+  own departure is removed first, so internal-tide excursions along the T–S line are
+  kept. Only flagged runs of one or two 10-min samples are removed (real excursions
+  last longer). Live data are otherwise masked only where listed under `masks`.
+- **Cascadia Basin (NC27, 2658 m)**: natural variability is tiny (daily temperature sd
+  ≈ 0.007 °C, salinity ≈ 0.005), and salinity and oxygen step at instrument swaps by
+  about 0.01 and 0.2 ml/l, so `no_records` in `sites.json` turns off records and
+  anomalies for salinity, oxygen and σθ there. Temperature is masked in the history
+  from 25 Jan to 11 Jul 2023 (instrument fault: noisy temperature, salinity and oxygen
+  flagged bad by ONC). The site lies outside the map image and is drawn at the map
+  edge with its true position and distance.
 - **Map**: `assets/gebco_barkley.png` is a static GEBCO WMS image of the map area
   (`map.bbox` in `sites.json`); station positions are from the ONC locations service.
 - **Tides**: temperature swings by up to ~0.5 °C over a tidal cycle at some sites,

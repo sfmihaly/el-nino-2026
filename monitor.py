@@ -114,21 +114,46 @@ def fetch(code, cat, sensors, t0, t1, tok):
     return df[~df.index.duplicated()].sort_index()
 
 
-def despike(s, floor, k=8):
-    """Remove isolated spikes: |x - 5-h median| > k*MAD and > floor."""
+def despike(s, floor, k=8, t=None, max_run=2):
+    """Remove isolated spikes from 10-min data.
+
+    Departure from a 5-h running median, flagged if > k*MAD and > floor. With t (temperature)
+    given, the part of the departure explained by temperature's own departure (robust linear
+    fit) is removed first, so internal-tide excursions along the T–S line are kept and only
+    values that leave it (e.g. a knock to the conductivity cell) are flagged. Flagged runs
+    longer than max_run samples are real signal and are kept."""
     x = s.dropna()
     if len(x) < 50:
         return s
-    med = x.rolling("5h", center=True, min_periods=3).median()
-    res = x - med
-    mad = 1.4826 * res.abs().rolling("30D", center=True, min_periods=48).median()
-    bad = x.index[(res.abs() > k * mad) & (res.abs() > floor)]
-    s = s.copy(); s.loc[bad] = np.nan
+    e = x - x.rolling("5h", center=True, min_periods=3).median()
+    if t is not None:
+        tt = t.reindex(x.index)
+        ht = tt - tt.rolling("5h", center=True, min_periods=3).median()
+        ok = ht.notna()
+        if ok.sum() >= 50:
+            a, b = e[ok], ht[ok]
+            core = (a.abs() < 5 * 1.4826 * a.abs().median()) & (b.abs() < 5 * 1.4826 * b.abs().median())
+            if core.sum() >= 50:
+                e = e - np.polyfit(b[core], a[core], 1)[0] * ht.fillna(0)
+    mad = 1.4826 * e.abs().rolling("30D", center=True, min_periods=48).median()
+    flag = (e.abs() > k * mad) & (e.abs() > floor)
+    runs = (flag != flag.shift()).cumsum()
+    flag &= flag.groupby(runs).transform("size") <= max_run
+    s = s.copy(); s.loc[x.index[flag]] = np.nan
     return s
 
 
+def clean_live(raw, site):
+    """Despike live data at read time (the cache keeps the unfiltered ONC values)."""
+    df = raw.copy()
+    if len(df):
+        df["S"] = despike(df["S"], site["despike_floor_salinity"], t=df["T"])
+        df["O2"] = despike(df["O2"], site["despike_floor_O2"])
+    return df
+
+
 def update_cache(site, tok, hist_end, hires_days, cache_dir):
-    f = cache_dir / f"{site['code']}_10min.parquet"
+    f = cache_dir / f"{site['code']}_10min_raw.parquet"     # unfiltered ONC good-flag values
     now = datetime.now(timezone.utc)
     old = pd.read_parquet(f) if f.exists() else None
     if old is not None and len(old):
@@ -142,9 +167,6 @@ def update_cache(site, tok, hist_end, hires_days, cache_dir):
         if c not in new:
             new[c] = np.nan
     new = new[["T", "S", "O2"]]
-    if len(new):
-        new["S"] = despike(new["S"], site["despike_floor_salinity"])
-        new["O2"] = despike(new["O2"], site["despike_floor_O2"])
     df = new if old is None else pd.concat([old[old.index < start], new])
     df = df[~df.index.duplicated(keep="last")].sort_index()
     df.to_parquet(f)
@@ -266,6 +288,9 @@ def site_figure(s, H, G, base, year, out, events=None):
             rlist.append((recs["O2_min"], "min"))
         if v == "sigma0" and "sigma0_max" in recs:
             rlist.append((recs["sigma0_max"], "max"))
+        no_rec = v in s.get("no_records", [])
+        if no_rec:
+            rlist = []
         this = gd[gd.index >= y0]
         parts = []
         for rec, st_ in rlist:
@@ -278,11 +303,13 @@ def site_figure(s, H, G, base, year, out, events=None):
                 d = this.idxmax() if st_ == "max" else this.idxmin()
                 new = (x > rec["value"]) if st_ == "max" else (x < rec["value"])
                 parts.append(f"{year} {st_} {x:.3f} ({d:%d %b}) vs {rec['value']:.3f}" + (" — new record" if new else ""))
-        if not len(this):
+        if no_rec:
+            title = f"{name}: {s.get('no_records_note', 'no records or anomalies')}"
+        elif not len(this):
             title = f"{name}: no valid data in {year}" + (" (salinity sensor flagged bad by ONC)" if v in ("salinity", "sigma0") else "")
         else:
             title = f"{name}: " + "; ".join(parts)
-        if v == "sigma0" and len(this):
+        if v == "sigma0" and len(this) and not no_rec:
             title += "  (lower = lighter water)"
         a.set_title(title, loc="left", fontsize=9)
         a.set_ylabel(lab)
@@ -332,6 +359,17 @@ def map_png(cfg, st, out_dir):
     for s in cfg["sites"]:
         v = an.get(s["code"], np.nan)
         col = cmap(norm(np.clip(v, -5, 5))) if pd.notna(v) else "white"
+        if not (x0 <= s["lon"] <= x1 and y0 <= s["lat"] <= y1):
+            # off the bathymetry image: marker at the nearest corner/edge, label gives true position and distance
+            mx = min(max(s["lon"], x0 + 0.06 * (x1 - x0)), x1 - 0.06 * (x1 - x0))
+            my = min(max(s["lat"], y0 + 0.16 * (y1 - y0)), y1 - 0.06 * (y1 - y0))
+            km = float(gsw.distance([mx, s["lon"]], [my, s["lat"]])[0]) / 1000
+            ax.plot(mx, my, "s", color=col, mec="k", ms=9, mew=0.8, zorder=5)
+            txt = (f"{s['name']} {s['depth_m']} m (off map,\n{s['lat']:.2f}° N {-s['lon']:.2f}° W, {km:.0f} km)"
+                   + (f"\n{v:+.1f} sd" if pd.notna(v) else ""))
+            ax.annotate(txt, (mx, my), xytext=(9, 0), textcoords="offset points", fontsize=7.5, ha="left", va="center",
+                        path_effects=halo)
+            continue
         ax.plot(s["lon"], s["lat"], "o", color=col, mec="k", ms=9, mew=0.8, zorder=5)
         if s in canyon:
             continue
@@ -352,7 +390,7 @@ def map_png(cfg, st, out_dir):
     cb.set_label("Temperature anomaly today (sd)")
     ax.text(0.01, 0.01, m["attribution"], transform=ax.transAxes, fontsize=6.5, color="0.25")
     ax.text(0.73, 0.97, "Vancouver Island", transform=ax.transAxes, fontsize=8.5, style="italic", va="top", path_effects=halo)
-    ax.text(0.10, 0.12, "Pacific Ocean", transform=ax.transAxes, fontsize=8.5, style="italic", color="0.2")
+    ax.text(0.04, 0.80, "Pacific Ocean", transform=ax.transAxes, fontsize=8.5, style="italic", color="0.2")
     fig.savefig(out_dir / "map.png", dpi=150, bbox_inches="tight"); plt.close(fig)
 
 
@@ -360,7 +398,8 @@ def overview_pngs(cfg, base, H, G, T10, year, recent_days, run_time, out_dir):
     sites = cfg["sites"]
     y0 = pd.Timestamp(f"{year}-01-01", tz="UTC"); y1 = pd.Timestamp(f"{year}-12-31", tz="UTC")
     days = pd.date_range(y0, y1, freq="1D")
-    fig, axs = plt.subplots(len(sites), 1, figsize=(7.2, 9.4), sharex=True, gridspec_kw={"hspace": 0.18})
+    H_IN = 1.35 * len(sites)                       # figure height grows with the number of sites
+    fig, axs = plt.subplots(len(sites), 1, figsize=(7.2, H_IN), sharex=True, gridspec_kw={"hspace": 0.18})
     for ax, s in zip(axs, sites):
         c = s["code"]; mu, sd = baseline(base, c, "temperature", days)
         ax.fill_between(days, mu - sd, mu + sd, color=BAND, lw=0); ax.plot(days, mu, color=CLIM, lw=0.9)
@@ -375,13 +414,13 @@ def overview_pngs(cfg, base, H, G, T10, year, recent_days, run_time, out_dir):
                    Patch(color=BAND), Line2D([], [], color="k", ls="--", lw=0.7)],
                   [f"{year}, tide-removed (Godin)", "hourly", "day-of-year mean (pre-2026)", "± 1 sd", "pre-2026 tide-removed maximum"],
                   ncol=3, fontsize=6.5, loc="lower left", bbox_to_anchor=(0, 1.02), frameon=False)
-    fig.suptitle(f"Temperature at ONC slope, canyon and shelf sites — updated {run_time:%Y-%m-%d %H:%M} UTC", y=0.995, fontsize=9)
+    fig.suptitle(f"Temperature at ONC shelf, slope, canyon and abyssal sites — updated {run_time:%Y-%m-%d %H:%M} UTC", y=0.995, fontsize=9)
     fig.savefig(out_dir / "overview_year.png", dpi=170, bbox_inches="tight"); plt.close(fig)
 
     end = max((T10[s["code"]].index.max() if len(T10[s["code"]]) else H[s["code"]].index.max()) for s in sites)
     r0 = end - pd.Timedelta(days=recent_days)
     hrs = pd.date_range(r0.floor("h"), end.ceil("h"), freq="1h")
-    fig, axs = plt.subplots(len(sites), 1, figsize=(7.2, 9.4), sharex=True, gridspec_kw={"hspace": 0.18})
+    fig, axs = plt.subplots(len(sites), 1, figsize=(7.2, H_IN), sharex=True, gridspec_kw={"hspace": 0.18})
     for ax, s in zip(axs, sites):
         c = s["code"]; mu, sd = baseline(base, c, "temperature", hrs)
         ax.fill_between(hrs, mu - sd, mu + sd, color=BAND, lw=0); ax.plot(hrs, mu, color=CLIM, lw=0.9)
@@ -487,7 +526,7 @@ def write_html(cfg, base, H, G, T10, st, year, hires_days, run_time, out_dir, pr
 table.status td,table.status th{{padding:3px 10px;border-bottom:1px solid #ddd;text-align:right}} .l{{text-align:left!important}}
 img{{max-width:100%}} img.map{{max-width:900px}} p.warn{{color:#b00}} p.note{{color:#444;font-size:13px;max-width:1100px}}
 details{{margin:8px 0 16px 0}} summary{{cursor:pointer;color:#333}}</style></head><body>
-<h2>ONC slope, canyon and shelf moorings off southwest Vancouver Island</h2>
+<h2>ONC shelf, slope, canyon and abyssal-plain moorings off southwest Vancouver Island</h2>
 <p>Updated {run_time:%Y-%m-%d %H:%M} UTC. Site figures: {links}</p>
 <img class="map" src="map.png" alt="Station map">
 <h3>Today against the pre-2026 normal for the date (tide-removed values to {valid})</h3>
@@ -496,7 +535,8 @@ details{{margin:8px 0 16px 0}} summary{{cursor:pointer;color:#333}}</style></hea
 pre-2026 daily values within ±7 days of the date. This is a day-against-day comparison and is not the window-mean sd used in the
 report. σθ = TEOS-10 potential density anomaly; a negative σθ anomaly means lighter water than normal at that depth (density
 surfaces pushed down). σθ needs valid salinity, so it is unavailable at Clayoquot Slope, whose salinity sensor has been flagged bad
-by ONC since Dec 2024.</p>{mask_note(cfg)}
+by ONC since Dec 2024. At Cascadia Basin (2658 m) natural variability is so small (daily temperature sd ≈ 0.007 °C) that steps
+between instruments dominate salinity and oxygen, so only temperature is compared with records and normals there.</p>{mask_note(cfg)}
 <details><summary>Full status table (also in <a href="status.csv">status.csv</a>)</summary>{detail}</details>
 <p class="note">Tide-removed values use a Godin filter (24-, 24- and 25-h running means), so they lag the latest data by ~35 h;
 'last 25 h mean' is the most recent near-tide-free value. Baseline: {cfg['baseline_note']} Data: Ocean Networks Canada Oceans 3.0
@@ -533,8 +573,9 @@ def main():
             live = update_cache(s, tok, hist_end, args.hires_days, cache_dir)
         except Exception as e:
             problems.append(f"{c}: {e}")
-            f = cache_dir / f"{c}_10min.parquet"
+            f = cache_dir / f"{c}_10min_raw.parquet"
             live = pd.read_parquet(f) if f.exists() else pd.DataFrame(columns=["T", "S", "O2"])
+        live = clean_live(live, s)
         lh = live.rename(columns={"T": "temperature", "S": "salinity"}).resample("1h").mean() if len(live) else live
         if len(lh):
             lh.index = lh.index + pd.Timedelta("30min")          # match history's hourly-centre stamps
@@ -564,7 +605,8 @@ def main():
                        normal_C=round(mu[0], 3), anomaly_C=round(g.iloc[-1] - mu[0], 3), anomaly_sd=round((g.iloc[-1] - mu[0]) / sd[0], 1),
                        max_filtered_this_year_C=round(gy.max(), 3) if len(gy) else np.nan,
                        pre2026_record_C=rec["value"], new_record_this_year=bool(len(gy) and gy.max() > rec["value"]))
-        gs = G[c]["sigma0"].dropna() if "sigma0" in G[c] else pd.Series(dtype=float)
+        gs = (G[c]["sigma0"].dropna() if "sigma0" in G[c] and "sigma0" not in s.get("no_records", [])
+              else pd.Series(dtype=float))
         if len(gs):
             gsy = noon(G[c]["sigma0"]).dropna(); gsy = gsy[gsy.index >= pd.Timestamp(f"{year}-01-01", tz="UTC")]
             srec = s["pre2026_records_godin"]["sigma0"]
