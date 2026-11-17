@@ -51,6 +51,7 @@ RESAMPLE_S = 600
 GOOD = {7}                         # ONC flag: valid resampled average
 EV, BAND, CLIM, GREY = "#c0392b", "#cfd8e3", "#5b7a99", "0.6"
 EN_COL, EN_TXT, BLOB_COL = "#f4a261", "#b5651d", "#7b6fb0"   # event shading
+CHG = "#1f5f8b"                                                 # instrument changes
 VARS = [("temperature", "T", "Temperature (°C)", "max"),
         ("salinity", "S", "Salinity (PSS-78)", "min"),
         ("O2", "O2", "Oxygen (ml/l)", "max"),
@@ -185,6 +186,25 @@ def godin(hourly, max_gap_h=2):
               .rolling(25, center=True, min_periods=25).mean())
 
 
+def change_times(site, var):
+    """Instrument-change times (sites.json 'instrument_changes') that affect this variable."""
+    return sorted(pd.Timestamp(c["date"]) for c in site.get("instrument_changes", []) if var in c["vars"])
+
+
+def godin_segmented(hourly, times):
+    """Godin-filter each stretch between instrument changes separately, so the 71-h window never mixes
+    two instruments' offsets; ~35 h either side of each change are left empty (line breaks there)."""
+    x = hourly.dropna()
+    cuts = [t for t in times if len(x) and x.index.min() < t < x.index.max()]
+    if not cuts:
+        return godin(x)
+    edges = [x.index.min() - pd.Timedelta("1h")] + cuts + [x.index.max() + pd.Timedelta("1h")]
+    parts = [godin(x[(x.index > a) & (x.index <= b)]) for a, b in zip(edges[:-1], edges[1:])
+             if ((x.index > a) & (x.index <= b)).sum() > 0]
+    out = pd.concat(parts)
+    return out[~out.index.duplicated()].sort_index()
+
+
 def noon(g):
     d = g[g.index.hour == 12]
     d.index = d.index.normalize()
@@ -276,6 +296,16 @@ def site_figure(s, H, G, base, year, out, events=None):
             a.plot(cur.index, cur, color=EV, lw=1.0)
         hh = H[v].loc[r0:].dropna()
         hhp = hh.asfreq("1h") if len(hh) else hh
+        ct = change_times(s, v)
+        for t in ct:                                                  # break the hourly line at each change
+            after = hhp.index[hhp.index >= t]
+            if len(after) and after[0] - t < pd.Timedelta("2h"):
+                hhp.loc[after[0]] = np.nan
+            a.axvline(t, color=CHG, lw=0.7, ls=":", zorder=3)
+            if t >= r0:
+                b.axvline(t, color=CHG, lw=1.0, ls=":", zorder=3)
+                b.text(t, 0.97, " instrument\n replaced", transform=b.get_xaxis_transform(), color=CHG, fontsize=6.5,
+                       ha="left", va="top")
         days = pd.date_range(r0.normalize(), end.normalize() + pd.Timedelta("1D"), freq="1D")
         mu, sd = baseline(base, s["code"], v, days)
         b.fill_between(days, mu - sd, mu + sd, color=BAND, lw=0); b.plot(days, mu, color=CLIM, lw=0.9)
@@ -326,10 +356,15 @@ def site_figure(s, H, G, base, year, out, events=None):
     axs[-1, 1].xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
     axs[-1, 1].set_xlim(r0, end + pd.Timedelta("2D"))
     draw_events(axs, events, end)
+    h1, l1 = [], []
     if events:
-        fig.legend([Patch(facecolor=EN_COL, alpha=0.4), Patch(facecolor="white", edgecolor=BLOB_COL, hatch="////")],
-                   ["El Niño (NOAA ONI ≥ +0.5 °C, to nearest month)", "The Blob, NE Pacific marine heatwave"],
-                   loc="lower left", bbox_to_anchor=(0.06, 0.035), fontsize=7, ncol=2, frameon=False)
+        h1 += [Patch(facecolor=EN_COL, alpha=0.4), Patch(facecolor="white", edgecolor=BLOB_COL, hatch="////")]
+        l1 += ["El Niño (NOAA ONI ≥ +0.5 °C, to nearest month)", "The Blob, NE Pacific marine heatwave"]
+    if s.get("instrument_changes"):
+        h1.append(Line2D([], [], color=CHG, lw=1.0, ls=":"))
+        l1.append("instrument replaced: salinity, oxygen, σθ may step (lines broken, filtered separately)")
+    if h1:
+        fig.legend(h1, l1, loc="lower left", bbox_to_anchor=(0.06, 0.035), fontsize=7, ncol=len(h1), frameon=False)
     fig.legend([Line2D([], [], color=GREY, lw=1), Line2D([], [], color=EV, lw=1.3), Line2D([], [], color="k", ls="--", lw=0.8),
                 Patch(color=BAND), Line2D([], [], color=CLIM, lw=0.9)],
                [f"tide-removed daily, before {year} (right: hourly)", f"tide-removed, {year}", "pre-2026 record (tide-removed)",
@@ -544,7 +579,8 @@ between instruments dominate salinity and oxygen, so only temperature is compare
 (CC-BY 4.0). {cfg['map']['attribution']}.</p>
 {fig.to_html(include_plotlyjs="cdn", full_html=False)}
 <h2>Site records: temperature, salinity, oxygen and σθ</h2>
-<p class="note">{cfg.get("events_note", "")}</p>{imgs}</body></html>"""
+<p class="note">{cfg.get("events_note", "")}</p>
+<p class="note">{cfg.get("instrument_changes_note", "")} Dotted blue lines mark the changes.</p>{imgs}</body></html>"""
     (out_dir / "index.html").write_text(page, encoding="utf-8")
 
 
@@ -586,7 +622,7 @@ def main():
         h = add_sigma0(h, s)
         H[c] = h
         T10[c] = live["T"].dropna() if len(live) else pd.Series(dtype=float)
-        G[c] = {v: godin(h[v].dropna()) for v, *_ in VARS if h[v].notna().sum() > 100}
+        G[c] = {v: godin_segmented(h[v], change_times(s, v)) for v, *_ in VARS if h[v].notna().sum() > 100}
         G[c] = pd.DataFrame(G[c])
 
         # status row

@@ -49,6 +49,14 @@ and `status.csv`.
   own departure is removed first, so internal-tide excursions along the T–S line are
   kept. Only flagged runs of one or two 10-min samples are removed (real excursions
   last longer). Live data are otherwise masked only where listed under `masks`.
+- **Instrument changes** (`instrument_changes` per site in `sites.json`, from ONC
+  deployment records; a change counts when the device itself changes): salinity,
+  oxygen and σθ can step when a CTD or optode is replaced (different calibration,
+  freshly cleaned plumbing). For those variables the tide-removed series is filtered
+  separately on each side of a change, lines are broken there, and a dotted blue line
+  marks it. Temperature is left continuous (offsets are a few thousandths of a °C).
+  Add an entry when ONC services a site: `{"date": "2027-08-30T12:00Z", "vars":
+  ["O2", "salinity", "sigma0"], "devices": "old → new"}`.
 - **Cascadia Basin (NC27, 2658 m)**: natural variability is tiny (daily temperature sd
   ≈ 0.007 °C, salinity ≈ 0.005), and salinity and oxygen step at instrument swaps by
   about 0.01 and 0.2 ml/l, so `no_records` in `sites.json` turns off records and

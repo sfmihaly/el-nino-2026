@@ -44,7 +44,108 @@
       },
       "lat": 48.808292,
       "lon": -125.2815,
-      "pressure_dbar": 25.2
+      "pressure_dbar": 25.2,
+      "instrument_changes": [
+        {
+          "date": "2013-07-16T18:00Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7035 → SBECTD19p7036; SBE63630225 → SBE63630108"
+        },
+        {
+          "date": "2014-07-23T18:00Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7036 → SBECTD16p6001; SBE63630108 → SBE63630636"
+        },
+        {
+          "date": "2015-07-20T20:50Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p6001 → SBECTD19p7035; SBE63630636 → SBE63630225"
+        },
+        {
+          "date": "2016-04-20T20:30Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7035 → SBECTD19p7036; SBE63630225 → SBE63630108"
+        },
+        {
+          "date": "2019-07-03T13:00Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7036 → SBECTD19p7589; SBE63630108 → SBE63631008"
+        },
+        {
+          "date": "2021-04-20T18:27Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7589 → SBECTD19p6938; SBE63631008 → SBE43-2584"
+        },
+        {
+          "date": "2022-04-07T17:30Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p6938 → SBECTD19p7770; SBE43-2584 → SBE63631533"
+        },
+        {
+          "date": "2023-04-12T17:34Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7770 → SBECTD19p7787; SBE63631533 → SBE63631527"
+        },
+        {
+          "date": "2024-04-10T23:50Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7787 → SBECTD19p4996; SBE63631527 → SBE63631868"
+        },
+        {
+          "date": "2025-09-04T17:42Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p4996 → SBECTD19p7518; SBE63631868 → SBE63631501"
+        },
+        {
+          "date": "2026-08-13T15:56Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7518 → AML6RTA60002; SBE63631501 → JFERINKOFT0GSP022"
+        }
+      ]
     },
     {
       "code": "NCBC",
@@ -88,7 +189,98 @@
       },
       "lat": 48.427313,
       "lon": -126.174546,
-      "pressure_dbar": 399.8
+      "pressure_dbar": 399.8,
+      "instrument_changes": [
+        {
+          "date": "2013-05-10T17:21Z",
+          "vars": [
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD37SIP5693 → SBECTD16p7029"
+        },
+        {
+          "date": "2014-05-03T18:59Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p7029 → SBECTD19p7034; SBE63630110 → SBE63630019"
+        },
+        {
+          "date": "2015-09-17T13:05Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7034 → SBECTD19p7029; SBE63630019 → SBE63630110"
+        },
+        {
+          "date": "2016-06-16T03:13Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7029 → SBECTD19p7031; SBE63630110 → SBE63630281"
+        },
+        {
+          "date": "2018-07-31T04:41Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7031 → SBECTD19p7029; SBE63630281 → SBE63631479"
+        },
+        {
+          "date": "2019-05-16T18:22Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7029 → SBECTD19p7034; SBE63631479 → SBE63630019"
+        },
+        {
+          "date": "2019-09-07T06:07Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7034 → SBECTD19p6813; SBE63630019 → SBE63630639"
+        },
+        {
+          "date": "2021-03-27T15:13Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p6813 → SBECTD19p7034; SBE63630639 → SBE63630019"
+        },
+        {
+          "date": "2023-09-10T22:51Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7034 → SBECTD19p7026; SBE63630019 → SBE63630103"
+        },
+        {
+          "date": "2025-05-27T04:33Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7026 → SBECTD19p7035; SBE63630103 → SBE63632210"
+        }
+      ]
     },
     {
       "code": "BACND",
@@ -132,7 +324,27 @@
       },
       "lat": 48.345656,
       "lon": -126.157925,
-      "pressure_dbar": 649.5
+      "pressure_dbar": 649.5,
+      "instrument_changes": [
+        {
+          "date": "2020-06-01T18:06Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7027 → SBECTD19p7028; SBE63630279 → SBE63630109"
+        },
+        {
+          "date": "2022-05-20T23:35Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7028 → SBECTD19p6813; SBE63630109 → SBE63630639"
+        }
+      ]
     },
     {
       "code": "BACHY",
@@ -186,6 +398,53 @@
           "end": null,
           "reason": "Abrupt salinity step of about −0.12 with no matching change in temperature or oxygen; probable conductivity-cell fouling. Remove or set an end time once the sensor recovers or is serviced."
         }
+      ],
+      "instrument_changes": [
+        {
+          "date": "2015-09-16T07:58Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p7028 → SBECTD19p7027; SBE63630109 → SBE63630279"
+        },
+        {
+          "date": "2018-08-01T07:43Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7027 → SBECTD19p7876; SBE63630279 → SBE63631893"
+        },
+        {
+          "date": "2020-03-09T22:37Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7876 → SBECTD19p7029; SBE63631893 → SBE63631479"
+        },
+        {
+          "date": "2022-05-26T20:50Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7029 → SBECTD19p7031; SBE63631479 → SBE63630281"
+        },
+        {
+          "date": "2024-06-13T14:55Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7031 → SBECTD19p7029; SBE63630281 → SBE63633706"
+        }
       ]
     },
     {
@@ -230,7 +489,88 @@
       },
       "lat": 48.314899,
       "lon": -126.058282,
-      "pressure_dbar": 904.6
+      "pressure_dbar": 904.6,
+      "instrument_changes": [
+        {
+          "date": "2011-07-16T03:46Z",
+          "vars": [
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p6002 → SBECTD16p6813"
+        },
+        {
+          "date": "2012-06-02T15:29Z",
+          "vars": [
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p6813 → SBECTD16p6002"
+        },
+        {
+          "date": "2013-05-14T16:42Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p6002 → SBECTD16p7027; SBE63630111 → SBE63630279"
+        },
+        {
+          "date": "2014-05-12T15:31Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p7027 → SBECTD16p6813; SBE63630279 → SBE63630639"
+        },
+        {
+          "date": "2016-06-15T18:14Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p6813 → SBECTD19p6002; SBE63630639 → SBE63630637"
+        },
+        {
+          "date": "2018-08-01T18:11Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p6002 → SBECTD19p7026; SBE63630637 → SBE63630103"
+        },
+        {
+          "date": "2021-08-21T03:53Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7026 → SBECTD19p6002; SBE63630103 → SBE63630637"
+        },
+        {
+          "date": "2023-09-11T22:20Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p6002 → SBECTD19p7028; SBE63630637 → SBE63630109"
+        },
+        {
+          "date": "2026-07-26T22:47Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7028 → SBECTD19p7026; SBE63630109 → SBE63630103"
+        }
+      ]
     },
     {
       "code": "BACAX",
@@ -274,7 +614,81 @@
       },
       "lat": 48.316653,
       "lon": -126.050494,
-      "pressure_dbar": 993.7
+      "pressure_dbar": 993.7,
+      "instrument_changes": [
+        {
+          "date": "2014-05-09T15:50Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p7031 → SBECTD16p6002; SBE63630281 → SBE63630637"
+        },
+        {
+          "date": "2015-09-17T13:05Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p6002 → SBECTD19p7031; SBE63630637 → SBE63630281"
+        },
+        {
+          "date": "2016-06-14T08:58Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7031 → SBECTD19p6813; SBE63630281 → SBE63630639"
+        },
+        {
+          "date": "2018-06-22T12:57Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p6813 → SBECTD19p7875; SBE63630639 → SBE63631868"
+        },
+        {
+          "date": "2020-03-10T14:05Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7875 → SBECTD19p7031; SBE63631868 → SBE63630281"
+        },
+        {
+          "date": "2021-03-27T23:12Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7031 → SBECTD19p7027; SBE63630281 → SBE63630279"
+        },
+        {
+          "date": "2024-06-25T09:33Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7027 → SBECTD19p6002; SBE63630279 → SBE63630637"
+        },
+        {
+          "date": "2026-08-30T22:51Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p6002 → SBECTD19p8459; SBE63630637 → SBE63634142"
+        }
+      ]
     },
     {
       "code": "NC89",
@@ -318,7 +732,71 @@
       },
       "lat": 48.670626,
       "lon": -126.848013,
-      "pressure_dbar": 1271.6
+      "pressure_dbar": 1271.6,
+      "instrument_changes": [
+        {
+          "date": "2013-09-09T22:02Z",
+          "vars": [
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD37SIP5695 → SBECTD16p7030"
+        },
+        {
+          "date": "2015-09-14T22:58Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p7030 → SBECTD19p7033; SBE63630280 → SBE63630282"
+        },
+        {
+          "date": "2018-06-30T15:33Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7033 → SBECTD19p7877; SBE63630282 → SBE63631918"
+        },
+        {
+          "date": "2020-06-14T00:22Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7877 → SBECTD19p7035; SBE63631918 → SBE63632210"
+        },
+        {
+          "date": "2022-08-04T18:26Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7035 → SBECTD19p7877; SBE63632210 → SBE63631918"
+        },
+        {
+          "date": "2023-06-28T06:42Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7877 → SBECTD19p7032; SBE63631918 → SBE63632514"
+        },
+        {
+          "date": "2024-06-23T09:24Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7032 → SBECTD19p7033; SBE63632514 → SBE63630282"
+        }
+      ]
     },
     {
       "code": "NC27",
@@ -379,7 +857,70 @@
           "reason": "instrument fault (noisy temperature; salinity and oxygen flagged bad by ONC); masked in the frozen history"
         }
       ],
-      "location_note": "ODP 1026 borehole site, Cascadia Basin abyssal plain"
+      "location_note": "ODP 1026 borehole site, Cascadia Basin abyssal plain",
+      "instrument_changes": [
+        {
+          "date": "2011-07-07T11:56Z",
+          "vars": [
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD37SIP5677 → SBECTD37SIP8464"
+        },
+        {
+          "date": "2013-06-23T22:38Z",
+          "vars": [
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD37SIP8464 → SBECTD16p7033"
+        },
+        {
+          "date": "2014-05-22T19:00Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p7033 → SBECTD16p7032; SBE63630282 → SBE63630111"
+        },
+        {
+          "date": "2017-06-19T10:33Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD16p7032 → SBECTD19p7030; SBE63630111 → SBE63630280"
+        },
+        {
+          "date": "2020-09-12T11:44Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7030 → SBECTD19p7033; SBE63630280 → SBE63630282"
+        },
+        {
+          "date": "2023-07-11T19:55Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p7033 → SBECTD19p8062; SBE63630282 → SBE63632576"
+        },
+        {
+          "date": "2026-08-29T08:51Z",
+          "vars": [
+            "O2",
+            "salinity",
+            "sigma0"
+          ],
+          "devices": "SBECTD19p8062 → SBECTD19p7027; SBE63632576 → SBE63630279"
+        }
+      ]
     }
   ],
   "map": {
@@ -430,5 +971,6 @@
       "start": "2013-12-01",
       "end": "2016-08-31"
     }
-  ]
+  ],
+  "instrument_changes_note": "Instrument changes (ONC deployment records): salinity, oxygen and σθ can step at a change because the new sensors carry different calibration offsets and freshly cleaned plumbing; lines are broken there and the tide-removed values are filtered separately on each side."
 }
